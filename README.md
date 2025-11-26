@@ -1,0 +1,2 @@
+# SMILE
+Project for school
