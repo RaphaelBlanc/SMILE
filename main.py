@@ -1,163 +1,228 @@
-import pygame
-import pytmx
-import sys
-import os
+#SECTION IMPORT #######################################################################
 
-# --- CONFIGURATION GLOBALE ---
-# ATTENTION : La fenêtre sera immense !
-LARGEUR_ECRAN = 2816  # Taille exacte de votre image
-HAUTEUR_ECRAN = 1536
-TITRE_FENETRE = "Jeu Tiled - Full Map & Collisions"
-NOM_FICHIER_CARTE = "MAPS.tmx"
-
-# --- CONFIGURATION JOUEUR ---
-PLAYER_SIZE = 32       # Taille du cube joueur en pixels
-PLAYER_COLOR = (0, 255, 0) # Vert vif
-PLAYER_SPEED = 5       # Vitesse de déplacement
-START_X, START_Y = 100, 100 # Position de départ
+import pygame #moteur graphique
+import sys 
+from pytmx.util_pygame import load_pygame #pour la map tmx
 
 
-class Player(pygame.sprite.Sprite):
-    def __init__(self, x, y, walls_rects):
-        super().__init__()
-        # Création visuelle du cube
-        self.image = pygame.Surface((PLAYER_SIZE, PLAYER_SIZE))
-        self.image.fill(PLAYER_COLOR)
-        
-        # Création de la hitbox (le rectangle physique)
-        self.rect = self.image.get_rect()
-        self.rect.topleft = (x, y)
-        
-        self.speed = PLAYER_SPEED
-        self.walls = walls_rects # Le joueur doit connaître la liste des murs
+"""Sys permet de communiquer avec le systeme, ce qui permettra d'arreter le programme
+quand on appellera pygame.quit(), notamment avec sys.exit() qui permet de kill le processus
+python de maniere propre"""
 
-    def update(self, keys_pressed):
-        # Calcul du mouvement souhaité
-        dx, dy = 0, 0
-        if keys_pressed[pygame.K_LEFT]:
-            dx = -self.speed
-        if keys_pressed[pygame.K_RIGHT]:
-            dx = self.speed
-        if keys_pressed[pygame.K_UP]:
-            dy = -self.speed
-        if keys_pressed[pygame.K_DOWN]:
-            dy = self.speed
+#DEFINITON CONSTANTE##################################################################
 
-        # --- LOGIQUE DE COLLISION "GLISSANTE" ---
-        # On déplace d'abord en X, puis on vérifie.
-        # Ensuite on déplace en Y, puis on vérifie.
-        # C'est ce qui permet de glisser contre un mur.
+"""Par convention, on ecrit le nom des constantes en majuscules"""
 
-        # 1. Mouvement Horizontal (X)
-        self.rect.x += dx
-        collision_x = self.check_collision()
-        if collision_x:
-            if dx > 0: # On allait à droite, on a tapé le côté gauche d'un mur
-                self.rect.right = collision_x.left
-            elif dx < 0: # On allait à gauche, on a tapé le côté droit d'un mur
-                self.rect.left = collision_x.right
+#ECRAN#
+SCREEN_WIDTH = 1920
+SCREEN_HEIGHT = 1072
+FPS = 60              #Pour un jeu en 60 images par seconde, fluide
 
-        # 2. Mouvement Vertical (Y)
-        self.rect.y += dy
-        collision_y = self.check_collision()
-        if collision_y:
-            if dy > 0: # On descendait, on a tapé le haut d'un mur
-                self.rect.bottom = collision_y.top
-            elif dy < 0: # On montait, on a tapé le bas d'un mur
-                self.rect.top = collision_y.bottom
+#COULEURS#
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+RED = (255, 0, 0)
 
-        # Empêcher de sortir de l'écran (Optionnel, vu la taille de l'écran)
-        self.rect.clamp_ip(pygame.Rect(0, 0, LARGEUR_ECRAN, HAUTEUR_ECRAN))
+#PHYSIQUE#
+GRAVITY = 0.8     #Force qui tire vers le bas a chaque frame
+JUMP_FORCE = -16  #Force negative, vers le haut, pour le saut
+PLAYER_SPEED = 6  #Vitesse de deplacement horizontale
+FRICTION = -0.12  #Resistance au sol pour un arret progressif
 
-    def check_collision(self):
-        # pygame.Rect.collidelist retourne l'index du premier rectangle touché
-        # ou -1 si aucun n'est touché.
-        index = self.rect.collidelist(self.walls)
-        if index != -1:
-            return self.walls[index] # On retourne le Rect du mur touché
-        return None
+#CLASS ASSET MANAGER#################################################################
+
+class AssetManager:
+
+    def __init__(self):
+        pass
+
+#CLASS TILE#########################################################################
+
+class Tile(pygame.sprite.Sprite):
+    def __init__(self, pos, surf, groups):
+        super().__init__(groups) 
+        self.image = surf
+        self.rect = self.image.get_rect(topleft=pos)
 
 
-def main():
-    # 1. Initialisation
-    pygame.init()
-    # Note: Sur certains Linux, ajouter le flag pygame.FULLSCREEN pourrait aider si la fenêtre est trop grande
-    # screen = pygame.display.set_mode((LARGEUR_ECRAN, HAUTEUR_ECRAN), pygame.FULLSCREEN)
-    screen = pygame.display.set_mode((LARGEUR_ECRAN, HAUTEUR_ECRAN))
-    pygame.display.set_caption(TITRE_FENETRE)
-    clock = pygame.time.Clock()
 
-    # 2. Chargement Sécurisé
-    dossier_script = os.path.dirname(os.path.abspath(__file__))
-    chemin_carte = os.path.join(dossier_script, NOM_FICHIER_CARTE)
+#CLASS PLAYER########################################################################
 
-    try:
-        tmx_data = pytmx.load_pygame(chemin_carte)
-    except FileNotFoundError:
-        print(f"ERREUR : Fichier {NOM_FICHIER_CARTE} introuvable.")
-        sys.exit()
-    except Exception as e:
-        print(f"Erreur lors du chargement de la carte ou de l'image : {e}")
-        sys.exit()
+class Player(pygame.sprite.Sprite): #la classe est une enfant de la classe Sprite de pygame
 
-    # 3. Préparation des Murs (Hitboxes)
-    walls_list = []
-    for obj in tmx_data.objects:
-        # Si votre type dans Tiled est "bloquant"
-        if obj.type == "bloquant":
-            # On crée un rectangle Pygame pour chaque mur
-            wall_rect = pygame.Rect(obj.x, obj.y, obj.width, obj.height)
-            walls_list.append(wall_rect)
-    
-    print(f"{len(walls_list)} murs invisibles chargés.")
+    def __init__(self, pos):
+        super().__init__() #permet de ne pas ecraser l'init de la clase Sprite de Pygame
+        self.image = pygame.Surface((32, 64))
+        self.image.fill(RED)  #je colore le toile de pixel image en rouge
 
-    # 4. Création du Joueur
-    # On lui passe la liste des murs pour qu'il gère ses collisions
-    player = Player(START_X, START_Y, walls_list)
-    
-    # Groupe de sprites (pratique pour dessiner/mettre à jour)
-    all_sprites = pygame.sprite.Group()
-    all_sprites.add(player)
+        self.rect = self.image.get_rect(topleft=pos) 
+        self.direction = pygame.math.Vector2(0, 0)
 
-    # --- BOUCLE PRINCIPALE ---
-    running = True
-    while running:
-        # Gestion des entrées
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-            # Raccourci pour quitter si la fenêtre est trop grande (Echap)
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    running = False
+        """Ce vecteur est assez facilitant, on l'utilisera dans les fonctions
+        suivantes pour recuperer vers ou veux aller le joueur ainsi que l'application
+        de la gravite"""
+
+        self.velocity = pygame.math.Vector2(0, 0)
+
+        """Ce vecteur va etre celui que l'on va ajouter a la position
+        on va pouvoir gerer l'inertie et d'autre chose avec"""
+
+        self.count_jump = 0 #J'initialise un compteur pour faire un seul saut
+
+
+    def get_input(self):
+        """Gestion des entrees du clavier"""
 
         keys = pygame.key.get_pressed()
+
+        #Pour le mouvement horizontal
+        if keys[pygame.K_RIGHT]:
+            self.direction.x = 1
+        elif keys[pygame.K_LEFT]:
+            self.direction.x = -1
+        else:
+            self.direction.x = 0
         
-        # Mise à jour du joueur (mouvement + collisions)
-        all_sprites.update(keys)
+        #Gestion du saut simple, pour l'instant, apres on fera qqc de mieux
+        if keys[pygame.K_SPACE]:
+            self.jump()
+    
+    def jump(self):
+        "Methode dedie au saut, on note qu'on fera par la suite un verification pour"
+        "savoir si notre personnage est sur le sol"
 
-        # --- DESSIN ---
-        screen.fill((0,0,0)) # Nettoyage noir
+        if self.count_jump != 1 :
+            self.direction.y = JUMP_FORCE
+            self.count_jump = 1
 
-        # A. Dessiner le fond (Image Tiled)
-        for layer in tmx_data.visible_layers:
-            if isinstance(layer, pytmx.TiledImageLayer) and layer.image:
-                 # On dessine tout en 0,0 car pas de caméra
-                screen.blit(layer.image, (0, 0))
+    def apply_gravity(self):
+        """On applique la gravite a la vitesse verticale"""
 
-        # B. Dessiner le joueur
-        all_sprites.draw(screen)
+        self.direction.y += GRAVITY # on appliquera direction au rect plus bas
 
-        # C. (Optionnel) Mode Debug : Dessiner les murs en rouge pour vérifier
-        # Commentez ces deux lignes si vous voulez qu'ils soient vraiment invisibles
-        for wall in walls_list:
-             pygame.draw.rect(screen, (255, 0, 0), wall, 2)
+    def update(self, obstacles):
+        """On fait le calcul de la physique a chaque frame"""
 
+        self.get_input() #on demande recup ce que le joueur veut faire
+        self.apply_gravity() #on applique la gravite
+
+        self.move(obstacles)
+
+    def move(self, obstacles):
+        """Ici le but va etre de faire une gestion precise des mouvements
+        CAD : Mouvement --> Collision --> Correction position"""
+
+        # --- AXE X (Horizontal) ---
+        self.rect.x += self.direction.x * PLAYER_SPEED
+        self.check_collision('horizontal', obstacles)
+
+        # --- AXE Y (Vertical) ---
+        self.rect.y += self.direction.y
+        self.check_collision('vertical', obstacles)
+
+    def check_collision(self, direction, obstacles):
+        """On detecte et on resout les collisions"""
+        # On vérifie si le rect du joueur touche un des rects du groupe obstacles
+        hits = pygame.sprite.spritecollide(self, obstacles, False)
+
+        if hits: # S'il y a collision
+            if direction == 'horizontal':
+                # Si on allait à droite, on se colle à gauche du mur
+                if self.direction.x > 0: 
+                    self.rect.right = hits[0].rect.left
+                # Si on allait à gauche, on se colle à droite du mur
+                if self.direction.x < 0: 
+                    self.rect.left = hits[0].rect.right
+            
+            if direction == 'vertical':
+                # Si on tombait (gravité), on atterrit sur le mur
+                if self.direction.y > 0: 
+                    self.rect.bottom = hits[0].rect.top
+                    self.direction.y = 0     # On arrête la chute
+                    self.count_jump = 0      # On récupère le saut
+                
+                # Si on sautait et qu'on tape un plafond
+                if self.direction.y < 0: 
+                    self.rect.top = hits[0].rect.bottom
+                    self.direction.y = 0     # On se cogne la tête
+        
+
+#CLASS GAME#########################################################################
+
+class Game:
+
+    def __init__(self):
+        pygame.init() #je lance la fenetre pygame
+        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT)) #taille de l'ecran
+        pygame.display.set_caption("SMILE") #pour le nom de la fenetre
+        self.clock = pygame.time.Clock()
+
+        #CREATION GROUPES DE SPRITES
+        #Visibles
+        self.visibles_sprites = pygame.sprite.Group()
+        #Obstable
+        self.obstacle_sprites = pygame.sprite.Group()
+
+        # --- CHARGEMENT DE LA MAP TILED ---
+        tmx_data = load_pygame('map.tmx') # Charge le fichier
+
+        try:
+            layer_fond = tmx_data.get_layer_by_name('Background')
+            self.background_image = layer_fond.image
+        except ValueError:
+            print("ERREUR : Je ne trouve pas le calque 'Background'. Vérifie le nom dans Tiled !")
+            # On met un fond gris par défaut pour pas que ça plante
+            self.background_image = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+            self.background_image.fill((50, 50, 50))
+
+        # On parcourt le calque 'Collisions' (c'est le nom que tu as donné dans Tiled)
+        # layer.tiles() renvoie : x, y, et l'image (surf) de la tuile
+
+        for x, y, surf in tmx_data.get_layer_by_name('Collisions').tiles():
+            # Tiled donne des coordonnées en "grille" (ex: case 0, case 1)
+            # On multiplie par la taille d'une tuile (32x32 dans ton cas ?) pour avoir les pixels
+            pos = (x * 32, y * 32) # <--- VERIFIE SI TES TUILES FONT BIEN 32px
+            
+            # On crée un mur à cet endroit et on l'ajoute aux groupes
+            Tile(pos, surf, [self.obstacle_sprites])
+
+        # --- CREATION DU JOUEUR ---
+        self.player = Player((200, 200)) # Position de départ arbitraire
+        self.visibles_sprites.add(self.player) # On l'ajoute au groupe visible
+
+    def update(self):
+        #On appelle la fonction update de tout les sprites du groupe obstacles
+        self.player.update(self.obstacle_sprites)
+
+    def draw(self):
+        # 1. D'ABORD ON DESSINE LE FOND (NOUVEAU)
+        # On colle l'image de fond en haut à gauche (0,0)
+        self.screen.blit(self.background_image, (0, 0))
+
+        # 2. ENSUITE ON DESSINE LES SPRITES PAR DESSUS
+        self.visibles_sprites.draw(self.screen)
+        
         pygame.display.flip()
-        clock.tick(60) # 60 FPS
 
-    pygame.quit()
-    sys.exit()
+    def run(self):
+        """C'est la boucle principale du jeu"""
 
-if __name__ == "__main__":
-    main()
+        while True:
+            #On commence par la gestion de la fermeture de la fenetre
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+            
+            #On appelle les deux fonction qui font tourner globalement le jeu
+            self.update()
+            self.draw()
+
+            #Et on limite le jeu a 60fps
+            self.clock.tick(FPS)
+
+#LANCEMENT DU JEU##########################################################################
+
+if __name__ == '__main__':
+    game = Game()
+    game.run()
