@@ -95,7 +95,7 @@ class Player(pygame.sprite.Sprite): #la classe est une enfant de la classe Sprit
         if self.count_jump < 2 :
             self.direction.y = JUMP_FORCE
             self.count_jump += 1
-            self.sound_manager.play_jump()
+            self.sound_manager.play("jump")
 
     def apply_gravity(self):
         self.direction.y += GRAVITY 

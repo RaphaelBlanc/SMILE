@@ -4,6 +4,8 @@ import pygame #moteur graphique
 import sys 
 from pytmx.util_pygame import load_pygame #pour la map tmx
 from player import Player
+from son import SoundManager
+from menu import Menu
 
 
 """Sys permet de communiquer avec le systeme, ce qui permettra d'arreter le programme
@@ -245,97 +247,6 @@ class NPC(pygame.sprite.Sprite):
             if dialogue_box.text == self.message:
                 dialogue_box.hide()
 
-#CLASS SOUND MANAGER######################################################################
-class SoundManager:
-    def __init__(self):
-        # Initialisation du module de son
-        pygame.mixer.init()
-        
-        # Chargement du son (avec une sécurité si le fichier manque)
-        try:
-            self.jump_sound = pygame.mixer.Sound("assets/boing.wav")
-            self.jump_sound.set_volume(0.2) # Règle le volume (0.0 à 1.0)
-        except FileNotFoundError:
-            print("Attention : Fichier son 'assets/boing.wav' introuvable.")
-            self.jump_sound = None # On évite que le jeu plante si le son manque
-
-    def play_jump(self):
-        if self.jump_sound:
-            self.jump_sound.play()
-
-#CLASS MENU ###############################################################################
-
-class Menu:
-    def __init__(self, screen):
-        self.screen = screen
-        
-        # Polices
-        self.titre_font = pygame.font.SysFont("Comic Sans MS", 100)
-        self.button_font = pygame.font.SysFont("Comic Sans MS", 35)
-        self.sous_titre_font = pygame.font.SysFont("Comic Sans MS", 30)
-
-        # Chargement des images (avec sécurité)
-        try:
-            self.smile_image = pygame.image.load("logo_jeu.png")
-            # On redimensionne un peu le logo s'il est trop gros
-            self.smile_image = pygame.transform.scale(self.smile_image, (200, 200))
-            
-            self.background_menu = pygame.image.load("background_menu.png")
-            self.background_menu = pygame.transform.scale(self.background_menu, (SCREEN_WIDTH, SCREEN_HEIGHT))
-        except FileNotFoundError:
-            print("ERREUR : Images du menu introuvables. Vérifie les fichiers png.")
-            self.smile_image = pygame.Surface((200, 200))
-            self.smile_image.fill(WHITE)
-            self.background_menu = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-            self.background_menu.fill((50, 50, 50))
-
-        # Création des Rectangles pour les boutons (Centrés sur l'écran)
-        center_x = SCREEN_WIDTH // 2
-        
-        # Bouton JOUER
-        self.button_play = pygame.Rect(0, 0, 250, 80)
-        self.button_play.center = (center_x, SCREEN_HEIGHT // 2)
-        
-        # Bouton QUITTER
-        self.button_quit = pygame.Rect(0, 0, 250, 80)
-        self.button_quit.center = (center_x, SCREEN_HEIGHT // 2 + 120)
-
-    def draw(self):
-        # 1. Fond
-        self.screen.blit(self.background_menu, (0, 0))
-        
-        # 2. Logo (Centré en haut)
-        logo_rect = self.smile_image.get_rect(center=(SCREEN_WIDTH // 2, 200))
-        self.screen.blit(self.smile_image, logo_rect)
-
-        # 3. Titre Texte
-        self.draw_text("PAUSE / MENU", self.titre_font, RED, SCREEN_WIDTH // 2, 350)
-
-        # 4. Dessin des boutons
-        pygame.draw.rect(self.screen, BLUE_MENU, self.button_play)
-        pygame.draw.rect(self.screen, BLUE_MENU, self.button_quit)
-
-        # 5. Texte des boutons
-        self.draw_text("REPRENDRE", self.button_font, WHITE, self.button_play.centerx, self.button_play.centery)
-        self.draw_text("QUITTER", self.button_font, WHITE, self.button_quit.centerx, self.button_quit.centery)
-
-    def draw_text(self, text, font, color, x, y):
-        text_obj = font.render(text, True, color)
-        text_rect = text_obj.get_rect(center=(x, y))
-        self.screen.blit(text_obj, text_rect)
-
-    def handle_input(self, event):
-        """Retourne une action ('play', 'quit' ou None) selon le clic"""
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            if event.button == 1: # Clic gauche
-                mouse_pos = event.pos
-                
-                if self.button_play.collidepoint(mouse_pos):
-                    return "play"
-                if self.button_quit.collidepoint(mouse_pos):
-                    return "quit"
-        return None
-        
 #LANCEMENT DU JEU##########################################################################
 
 if __name__ == '__main__':
