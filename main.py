@@ -22,6 +22,9 @@ FPS = 60              #Pour un jeu en 60 images par seconde, fluide
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 RED = (255, 0, 0)
+BLUE_NPC = (0, 0, 255) 
+BLUE_MENU = (0, 102, 204) # Couleur des boutons du menu
+PURPLE = (127, 0, 255)
 
 #PHYSIQUE#
 GRAVITY = 0.8     #Force qui tire vers le bas a chaque frame
@@ -159,9 +162,13 @@ class Game:
         pygame.display.set_caption("SMILE") #pour le nom de la fenetre
         self.clock = pygame.time.Clock()
 
+        # --- ETAT DU JEU (NOUVEAU) ---
+        self.is_paused = False # Par défaut, le jeu n'est pas en pause
+
         # --- GESTIONNAIRE DE SON ---
         self.sound_manager = SoundManager()
-
+        self.menu = Menu(self.screen) # On initialise le menu
+        
         #CREATION GROUPES DE SPRITES
         #Visibles
         self.visibles_sprites = pygame.sprite.Group()
@@ -206,42 +213,50 @@ class Game:
         self.visibles_sprites.add(self.player) # On l'ajoute au groupe visible
 
     def update(self):
-        #On appelle la fonction update de tout les sprites du groupe obstacles
-        self.player.update(self.obstacle_sprites)
-
-        # Update des PNJs (logique de dialogue)
-        # On passe le rect du joueur et la boite de dialogue aux PNJs
-        for npc in self.npc_sprites:
-            npc.update(self.player.rect, self.dialogue_box)
+        # Si le jeu est en pause, on ne met PAS à jour les positions (le jeu est figé)
+        if not self.is_paused:
+            self.player.update(self.obstacle_sprites)
+            for npc in self.npc_sprites:
+                npc.update(self.player.rect, self.dialogue_box)
 
     def draw(self):
-        # 1. D'ABORD ON DESSINE LE FOND (NOUVEAU)
-        # On colle l'image de fond en haut à gauche (0,0)
-        self.screen.blit(self.background_image, (0, 0))
-
-        # 2. ENSUITE ON DESSINE LES SPRITES PAR DESSUS
-        self.visibles_sprites.draw(self.screen)
-
-        self.dialogue_box.draw()
+        if self.is_paused:
+            # Si en pause, on dessine le menu
+            self.menu.draw()
+        else:
+            # Sinon, on dessine le jeu normal
+            self.screen.blit(self.background_image, (0, 0))
+            self.visibles_sprites.draw(self.screen)
+            self.dialogue_box.draw()
         
         pygame.display.flip()
 
     def run(self):
-        """C'est la boucle principale du jeu"""
-
         while True:
-            #On commence par la gestion de la fermeture de la fenetre
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
-            
-            #On appelle les deux fonction qui font tourner globalement le jeu
+                
+                # GESTION TOUCHE ECHAP (PAUSE)
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        # On inverse l'état (Vrai devient Faux, Faux devient Vrai)
+                        self.is_paused = not self.is_paused
+                
+                # GESTION CLICS SI MENU OUVERT
+                if self.is_paused:
+                    action = self.menu.handle_input(event)
+                    if action == "play":
+                        self.is_paused = False # On reprend le jeu
+                    if action == "quit":
+                        pygame.quit()
+                        sys.exit()
+
             self.update()
             self.draw()
-
-            #Et on limite le jeu a 60fps
             self.clock.tick(FPS)
+
 
 #CLASS DIALOGUE BOX########################################################################
 
@@ -331,6 +346,79 @@ class SoundManager:
     def play_jump(self):
         if self.jump_sound:
             self.jump_sound.play()
+
+#CLASS MENU ###############################################################################
+
+class Menu:
+    def __init__(self, screen):
+        self.screen = screen
+        
+        # Polices
+        self.titre_font = pygame.font.SysFont("Comic Sans MS", 100)
+        self.button_font = pygame.font.SysFont("Comic Sans MS", 35)
+        self.sous_titre_font = pygame.font.SysFont("Comic Sans MS", 30)
+
+        # Chargement des images (avec sécurité)
+        try:
+            self.smile_image = pygame.image.load("logo_jeu.png")
+            # On redimensionne un peu le logo s'il est trop gros
+            self.smile_image = pygame.transform.scale(self.smile_image, (200, 200))
+            
+            self.background_menu = pygame.image.load("background_menu.png")
+            self.background_menu = pygame.transform.scale(self.background_menu, (SCREEN_WIDTH, SCREEN_HEIGHT))
+        except FileNotFoundError:
+            print("ERREUR : Images du menu introuvables. Vérifie les fichiers png.")
+            self.smile_image = pygame.Surface((200, 200))
+            self.smile_image.fill(WHITE)
+            self.background_menu = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+            self.background_menu.fill((50, 50, 50))
+
+        # Création des Rectangles pour les boutons (Centrés sur l'écran)
+        center_x = SCREEN_WIDTH // 2
+        
+        # Bouton JOUER
+        self.button_play = pygame.Rect(0, 0, 250, 80)
+        self.button_play.center = (center_x, SCREEN_HEIGHT // 2)
+        
+        # Bouton QUITTER
+        self.button_quit = pygame.Rect(0, 0, 250, 80)
+        self.button_quit.center = (center_x, SCREEN_HEIGHT // 2 + 120)
+
+    def draw(self):
+        # 1. Fond
+        self.screen.blit(self.background_menu, (0, 0))
+        
+        # 2. Logo (Centré en haut)
+        logo_rect = self.smile_image.get_rect(center=(SCREEN_WIDTH // 2, 200))
+        self.screen.blit(self.smile_image, logo_rect)
+
+        # 3. Titre Texte
+        self.draw_text("PAUSE / MENU", self.titre_font, RED, SCREEN_WIDTH // 2, 350)
+
+        # 4. Dessin des boutons
+        pygame.draw.rect(self.screen, BLUE_MENU, self.button_play)
+        pygame.draw.rect(self.screen, BLUE_MENU, self.button_quit)
+
+        # 5. Texte des boutons
+        self.draw_text("REPRENDRE", self.button_font, WHITE, self.button_play.centerx, self.button_play.centery)
+        self.draw_text("QUITTER", self.button_font, WHITE, self.button_quit.centerx, self.button_quit.centery)
+
+    def draw_text(self, text, font, color, x, y):
+        text_obj = font.render(text, True, color)
+        text_rect = text_obj.get_rect(center=(x, y))
+        self.screen.blit(text_obj, text_rect)
+
+    def handle_input(self, event):
+        """Retourne une action ('play', 'quit' ou None) selon le clic"""
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 1: # Clic gauche
+                mouse_pos = event.pos
+                
+                if self.button_play.collidepoint(mouse_pos):
+                    return "play"
+                if self.button_quit.collidepoint(mouse_pos):
+                    return "quit"
+        return None
 
 #LANCEMENT DU JEU##########################################################################
 
