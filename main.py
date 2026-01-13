@@ -163,6 +163,11 @@ class Game:
         #Obstable
         self.obstacle_sprites = pygame.sprite.Group()
 
+        self.npc_sprites = pygame.sprite.Group()
+
+        # --- UI DIALOGUE ---
+        self.dialogue_box = DialogueBox(self.screen) # Création de l'interface
+
         # --- CHARGEMENT DE LA MAP TILED ---
         tmx_data = load_pygame('map.tmx') # Charge le fichier
 
@@ -186,6 +191,11 @@ class Game:
             # On crée un mur à cet endroit et on l'ajoute aux groupes
             Tile(pos, surf, [self.obstacle_sprites])
 
+        # --- CREATION D'UN PNJ TEST ---
+        # Je le place un peu plus loin, à 600px en X
+        self.pnj1 = NPC((600, 500), "Salut Voyageur ! Attention aux trous !", [self.visibles_sprites, self.npc_sprites])
+
+
         # --- CREATION DU JOUEUR ---
         self.player = Player((200, 200)) # Position de départ arbitraire
         self.visibles_sprites.add(self.player) # On l'ajoute au groupe visible
@@ -194,6 +204,11 @@ class Game:
         #On appelle la fonction update de tout les sprites du groupe obstacles
         self.player.update(self.obstacle_sprites)
 
+        # Update des PNJs (logique de dialogue)
+        # On passe le rect du joueur et la boite de dialogue aux PNJs
+        for npc in self.npc_sprites:
+            npc.update(self.player.rect, self.dialogue_box)
+
     def draw(self):
         # 1. D'ABORD ON DESSINE LE FOND (NOUVEAU)
         # On colle l'image de fond en haut à gauche (0,0)
@@ -201,6 +216,8 @@ class Game:
 
         # 2. ENSUITE ON DESSINE LES SPRITES PAR DESSUS
         self.visibles_sprites.draw(self.screen)
+
+        self.dialogue_box.draw()
         
         pygame.display.flip()
 
@@ -220,6 +237,78 @@ class Game:
 
             #Et on limite le jeu a 60fps
             self.clock.tick(FPS)
+
+#CLASS DIALOGUE BOX########################################################################
+
+class DialogueBox:
+    def __init__(self, screen):
+        self.screen = screen
+        self.font = pygame.font.SysFont("Arial", 30) # Police un peu plus grande
+        self.visible = False
+        self.text = ""
+        
+        # Dimensions de la boîte (centrée en bas)
+        self.box_width = 800
+        self.box_height = 150
+        # On centre la boite horizontalement, et on la met en bas
+        x_pos = (SCREEN_WIDTH - self.box_width) // 2
+        y_pos = SCREEN_HEIGHT - self.box_height - 50 
+        
+        self.rect = pygame.Rect(x_pos, y_pos, self.box_width, self.box_height)
+
+    def show(self, text):
+        self.text = text
+        self.visible = True
+
+    def hide(self):
+        self.visible = False
+
+    def draw(self):
+        if self.visible:
+            # Fond noir
+            pygame.draw.rect(self.screen, BLACK, self.rect)
+            # Bordure blanche
+            pygame.draw.rect(self.screen, WHITE, self.rect, 4)
+            
+            # Texte
+            text_surf = self.font.render(self.text, True, WHITE)
+            text_rect = text_surf.get_rect(center=self.rect.center)
+            self.screen.blit(text_surf, text_rect)
+
+#CLASS NPC ###############################################################################
+
+class NPC(pygame.sprite.Sprite):
+    def __init__(self, pos, message, groups):
+        super().__init__(groups)
+        # Visuel du PNJ (Carré Bleu pour différencier du joueur rouge)
+        self.image = pygame.Surface((32, 64))
+        self.image.fill((0, 0, 255)) 
+        self.rect = self.image.get_rect(topleft=pos)
+        
+        self.message = message
+        self.detection_radius = 150 # Distance de détection
+
+    def check_proximity(self, player_rect):
+        # On calcule la distance entre le centre du PNJ et le centre du Joueur
+        npc_center = pygame.math.Vector2(self.rect.center)
+        player_center = pygame.math.Vector2(player_rect.center)
+        
+        distance = npc_center.distance_to(player_center)
+        return distance <= self.detection_radius
+    
+    # C'est cette méthode qui manquait !
+    def update(self, player_rect, dialogue_box):
+        npc_center = pygame.math.Vector2(self.rect.center)
+        player_center = pygame.math.Vector2(player_rect.center)
+        
+        distance = npc_center.distance_to(player_center)
+        
+        if distance <= self.detection_radius:
+            dialogue_box.show(self.message)
+        else:
+            # Si on est loin et que la boite affiche NOTRE message, on l'enlève
+            if dialogue_box.text == self.message:
+                dialogue_box.hide()
 
 #LANCEMENT DU JEU##########################################################################
 
