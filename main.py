@@ -25,12 +25,15 @@ RED = (255, 0, 0)
 BLUE_NPC = (0, 0, 255) 
 BLUE_MENU = (0, 102, 204) # Couleur des boutons du menu
 PURPLE = (127, 0, 255)
+ORANGE = (255, 165, 0) # Pour les projectiles
+GREEN = (0, 255, 0)    # Pour la barre de vie
 
 #PHYSIQUE#
 GRAVITY = 0.8     #Force qui tire vers le bas a chaque frame
 JUMP_FORCE = -16  #Force negative, vers le haut, pour le saut
 PLAYER_SPEED = 6  #Vitesse de deplacement horizontale
 FRICTION = -0.12  #Resistance au sol pour un arret progressif
+HP_MAX = 100 # Points de vie max
 
 #CLASS ASSET MANAGER#################################################################
 
@@ -73,44 +76,70 @@ class Player(pygame.sprite.Sprite): #la classe est une enfant de la classe Sprit
         self.count_jump = 0 #J'initialise un compteur pour faire un seul saut
         self.sound_manager = sound_manager #on stocke le gestionnaire de son pour l'utiliser plus tard
 
+        # --- GESTION VITESSE ET DIRECTION ---
+        self.facing_right = True # Pour savoir où tirer
+        self.normal_speed = 6
+        self.sprint_speed = 10
+        self.current_speed = self.normal_speed
+
+        # --- CAPACITES ---
+        self.capacite = Capacite(self) # On lie le joueur à ses capacités
+
+        # --- VIE ---
+        self.hp_max = HP_MAX
+        self.hp_current = 100
+        self.health_bar_length = 200
 
     def get_input(self):
-        """Gestion des entrees du clavier"""
-
         keys = pygame.key.get_pressed()
 
-        #Pour le mouvement horizontal
-        if keys[pygame.K_RIGHT]:
+        # Mouvement + Direction du regard
+        if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
             self.direction.x = 1
-        elif keys[pygame.K_LEFT]:
+            self.facing_right = True
+        elif keys[pygame.K_LEFT] or keys[pygame.K_a]:
             self.direction.x = -1
+            self.facing_right = False
         else:
             self.direction.x = 0
         
-        #Gestion du saut simple, pour l'instant, apres on fera qqc de mieux
-        if keys[pygame.K_SPACE]:
+        # Sprint (Shift)
+        if keys[pygame.K_LSHIFT]:
+            self.current_speed = self.sprint_speed
+        else:
+            self.current_speed = self.normal_speed
+        
+        # Saut (Space)
+        if keys[pygame.K_SPACE] and not self.jump_pressed:
             self.jump()
+            self.jump_pressed = True
+        if not keys[pygame.K_SPACE]:
+            self.jump_pressed = False
     
     def jump(self):
         "Methode dedie au saut, on note qu'on fera par la suite un verification pour"
         "savoir si notre personnage est sur le sol"
 
-        if self.count_jump != 1 :
+        if self.count_jump < 2 :
             self.direction.y = JUMP_FORCE
-            self.count_jump = 1
+            self.count_jump += 1
             self.sound_manager.play_jump()
 
     def apply_gravity(self):
-        """On applique la gravite a la vitesse verticale"""
+        self.direction.y += GRAVITY 
+        if self.direction.y > 16: # Limite de vitesse de chute
+            self.direction.y = 16
 
-        self.direction.y += GRAVITY # on appliquera direction au rect plus bas
 
     def update(self, obstacles):
-        """On fait le calcul de la physique a chaque frame"""
+        self.get_input() 
+        
+        # --- GESTION DES CAPACITES ---
+        self.capacite.bdf() # Vérifie si on tire
+        self.capacite.projectiles.update(obstacles) # Met à jour les boules de feu existantes
+        self.capacite.dash(obstacles) # Vérifie si on dash
 
-        self.get_input() #on demande recup ce que le joueur veut faire
-        self.apply_gravity() #on applique la gravite
-
+        self.apply_gravity() 
         self.move(obstacles)
 
     def move(self, obstacles):
@@ -197,8 +226,7 @@ class Game:
 
         for x, y, surf in tmx_data.get_layer_by_name('Collisions').tiles():
             # Tiled donne des coordonnées en "grille" (ex: case 0, case 1)
-            # On multiplie par la taille d'une tuile (32x32 dans ton cas ?) pour avoir les pixels
-            pos = (x * 32, y * 32) # <--- VERIFIE SI TES TUILES FONT BIEN 32px
+            pos = (x * 32, y * 32) 
             
             # On crée un mur à cet endroit et on l'ajoute aux groupes
             Tile(pos, surf, [self.obstacle_sprites])
@@ -213,21 +241,38 @@ class Game:
         self.visibles_sprites.add(self.player) # On l'ajoute au groupe visible
 
     def update(self):
-        # Si le jeu est en pause, on ne met PAS à jour les positions (le jeu est figé)
         if not self.is_paused:
             self.player.update(self.obstacle_sprites)
             for npc in self.npc_sprites:
                 npc.update(self.player.rect, self.dialogue_box)
 
+    def draw_health_bar(self):
+        """Dessine la barre de vie en haut à gauche"""
+        x, y = 50, 50
+        health_ratio = self.player.hp_current / self.player.hp_max
+        current_bar_width = self.player.health_bar_length * health_ratio
+
+        # Fond (rouge)
+        pygame.draw.rect(self.screen, RED, (x, y, self.player.health_bar_length, 20))
+        # Vie actuelle (verte)
+        pygame.draw.rect(self.screen, GREEN, (x, y, current_bar_width, 20))
+        # Cadre (noir)
+        pygame.draw.rect(self.screen, BLACK, (x, y, self.player.health_bar_length, 20), 3)
+
     def draw(self):
         if self.is_paused:
-            # Si en pause, on dessine le menu
             self.menu.draw()
         else:
-            # Sinon, on dessine le jeu normal
             self.screen.blit(self.background_image, (0, 0))
             self.visibles_sprites.draw(self.screen)
+            
+            # --- DESSIN DES PROJECTILES ---
+            # Les projectiles sont stockés dans la "Capacite" du joueur
+            self.player.capacite.projectiles.draw(self.screen)
+            
+            # --- DESSIN DE L'UI ---
             self.dialogue_box.draw()
+            self.draw_health_bar()
         
         pygame.display.flip()
 
@@ -420,8 +465,78 @@ class Menu:
                     return "quit"
         return None
 
+#CLASS PROJECTILE (NOUVEAU) #########################################################
+class Projectile(pygame.sprite.Sprite):
+    def __init__(self, pos, direction):
+        super().__init__()
+        self.image = pygame.Surface((16, 16))
+        self.image.fill(ORANGE) 
+        self.rect = self.image.get_rect(center=pos)
+        self.speed = 15
+        self.direction = direction 
+
+    def update(self, obstacles):
+        # La boule avance
+        self.rect.x += self.speed * self.direction
+        
+        # Si elle touche un mur, elle disparaît
+        if pygame.sprite.spritecollide(self, obstacles, False):
+            self.kill()
+        
+        # Si elle sort de l'écran, on la supprime pour ne pas ramer
+        if self.rect.right < 0 or self.rect.left > SCREEN_WIDTH:
+            self.kill()
+
+#CLASS CAPACITE (NOUVEAU) ###########################################################
+class Capacite:
+    def __init__(self, player):
+        self.player = player
+        self.last_dash_time = 0
+        self.last_fire_time = 0      
+        self.fire_cooldown = 500     # 0.5 seconde entre chaque tir
+        self.projectiles = pygame.sprite.Group() # Groupe pour stocker les tirs
+
+    def dash(self, obstacles):
+        current_time = pygame.time.get_ticks()
+        keys = pygame.key.get_pressed()
+
+        # Touche V pour dasher (toutes les 1 seconde max)
+        if keys[pygame.K_v] and (current_time - self.last_dash_time > 1000):
+            dash_dir = pygame.math.Vector2(1, 0)
+            if self.player.direction.x < 0:
+                dash_dir = pygame.math.Vector2(-1, 0)
+            
+            # On fait un déplacement rapide instantané (téléportation glissée)
+            for _ in range(10):
+                self.player.rect.x += int(dash_dir.x * 12)
+                self.player.check_collision('horizontal', obstacles)
+            
+            self.player.direction.y = 0 # On stop la gravité pendant le dash
+            self.last_dash_time = current_time
+
+    def bdf(self):
+        keys = pygame.key.get_pressed()
+        current_time = pygame.time.get_ticks() 
+        
+        # Touche F pour tirer
+        if keys[pygame.K_f] and (current_time - self.last_fire_time > self.fire_cooldown): 
+            
+            if self.player.facing_right:
+                direction = 1
+            else:
+                direction = -1
+            
+            # On crée la boule de feu
+            nouvelle_boule = Projectile(self.player.rect.center, direction)
+            self.projectiles.add(nouvelle_boule)
+
+            self.last_fire_time = current_time
+
 #LANCEMENT DU JEU##########################################################################
 
 if __name__ == '__main__':
     game = Game()
     game.run()
+
+
+
