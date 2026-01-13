@@ -6,6 +6,8 @@ from pytmx.util_pygame import load_pygame #pour la map tmx
 from player import Player
 from son import SoundManager
 from menu import Menu
+from npc import NPC
+from npc import DialogueBox
 
 
 """Sys permet de communiquer avec le systeme, ce qui permettra d'arreter le programme
@@ -174,78 +176,6 @@ class Game:
             self.update()
             self.draw()
             self.clock.tick(FPS)
-
-
-#CLASS DIALOGUE BOX########################################################################
-
-class DialogueBox:
-    def __init__(self, screen):
-        self.screen = screen
-        self.font = pygame.font.SysFont("Arial", 30) # Police un peu plus grande
-        self.visible = False
-        self.text = ""
-        
-        # Dimensions de la boîte (centrée en bas)
-        self.box_width = 800
-        self.box_height = 150
-        # On centre la boite horizontalement, et on la met en bas
-        x_pos = (SCREEN_WIDTH - self.box_width) // 2
-        y_pos = SCREEN_HEIGHT - self.box_height - 50 
-        
-        self.rect = pygame.Rect(x_pos, y_pos, self.box_width, self.box_height)
-
-    def show(self, text):
-        self.text = text
-        self.visible = True
-
-    def hide(self):
-        self.visible = False
-
-    def draw(self):
-        if self.visible:
-            # Fond noir
-            pygame.draw.rect(self.screen, BLACK, self.rect)
-            # Bordure blanche
-            pygame.draw.rect(self.screen, WHITE, self.rect, 4)
-            
-            # Texte
-            text_surf = self.font.render(self.text, True, WHITE)
-            text_rect = text_surf.get_rect(center=self.rect.center)
-            self.screen.blit(text_surf, text_rect)
-
-#CLASS NPC ###############################################################################
-
-class NPC(pygame.sprite.Sprite):
-    def __init__(self, pos, message, groups):
-        super().__init__(groups)
-        # Visuel du PNJ (Carré Bleu pour différencier du joueur rouge)
-        self.image = pygame.Surface((32, 64))
-        self.image.fill((0, 0, 255)) 
-        self.rect = self.image.get_rect(topleft=pos)
-        
-        self.message = message
-        self.detection_radius = 150 # Distance de détection
-
-    def check_proximity(self, player_rect):
-        # On calcule la distance entre le centre du PNJ et le centre du Joueur
-        npc_center = pygame.math.Vector2(self.rect.center)
-        player_center = pygame.math.Vector2(player_rect.center)
-        
-        distance = npc_center.distance_to(player_center)
-        return distance <= self.detection_radius
-    
-    def update(self, player_rect, dialogue_box):
-        npc_center = pygame.math.Vector2(self.rect.center)
-        player_center = pygame.math.Vector2(player_rect.center)
-        
-        distance = npc_center.distance_to(player_center)
-        
-        if distance <= self.detection_radius:
-            dialogue_box.show(self.message)
-        else:
-            # Si on est loin et que la boite affiche NOTRE message, on l'enlève
-            if dialogue_box.text == self.message:
-                dialogue_box.hide()
 
 #LANCEMENT DU JEU##########################################################################
 
