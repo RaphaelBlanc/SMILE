@@ -50,7 +50,7 @@ class Tile(pygame.sprite.Sprite):
 
 class Player(pygame.sprite.Sprite): #la classe est une enfant de la classe Sprite de pygame
 
-    def __init__(self, pos):
+    def __init__(self, pos, sound_manager):
         super().__init__() #permet de ne pas ecraser l'init de la clase Sprite de Pygame
         self.image = pygame.Surface((32, 64))
         self.image.fill(RED)  #je colore le toile de pixel image en rouge
@@ -68,6 +68,7 @@ class Player(pygame.sprite.Sprite): #la classe est une enfant de la classe Sprit
         on va pouvoir gerer l'inertie et d'autre chose avec"""
 
         self.count_jump = 0 #J'initialise un compteur pour faire un seul saut
+        self.sound_manager = sound_manager #on stocke le gestionnaire de son pour l'utiliser plus tard
 
 
     def get_input(self):
@@ -94,6 +95,7 @@ class Player(pygame.sprite.Sprite): #la classe est une enfant de la classe Sprit
         if self.count_jump != 1 :
             self.direction.y = JUMP_FORCE
             self.count_jump = 1
+            self.sound_manager.play_jump()
 
     def apply_gravity(self):
         """On applique la gravite a la vitesse verticale"""
@@ -157,6 +159,9 @@ class Game:
         pygame.display.set_caption("SMILE") #pour le nom de la fenetre
         self.clock = pygame.time.Clock()
 
+        # --- GESTIONNAIRE DE SON ---
+        self.sound_manager = SoundManager()
+
         #CREATION GROUPES DE SPRITES
         #Visibles
         self.visibles_sprites = pygame.sprite.Group()
@@ -197,7 +202,7 @@ class Game:
 
 
         # --- CREATION DU JOUEUR ---
-        self.player = Player((200, 200)) # Position de départ arbitraire
+        self.player = Player((200, 200), self.sound_manager) # Position de départ arbitraire
         self.visibles_sprites.add(self.player) # On l'ajoute au groupe visible
 
     def update(self):
@@ -296,7 +301,6 @@ class NPC(pygame.sprite.Sprite):
         distance = npc_center.distance_to(player_center)
         return distance <= self.detection_radius
     
-    # C'est cette méthode qui manquait !
     def update(self, player_rect, dialogue_box):
         npc_center = pygame.math.Vector2(self.rect.center)
         player_center = pygame.math.Vector2(player_rect.center)
@@ -309,6 +313,24 @@ class NPC(pygame.sprite.Sprite):
             # Si on est loin et que la boite affiche NOTRE message, on l'enlève
             if dialogue_box.text == self.message:
                 dialogue_box.hide()
+
+#CLASS SOUND MANAGER######################################################################
+class SoundManager:
+    def __init__(self):
+        # Initialisation du module de son
+        pygame.mixer.init()
+        
+        # Chargement du son (avec une sécurité si le fichier manque)
+        try:
+            self.jump_sound = pygame.mixer.Sound("assets/boing.wav")
+            self.jump_sound.set_volume(0.2) # Règle le volume (0.0 à 1.0)
+        except FileNotFoundError:
+            print("Attention : Fichier son 'assets/boing.wav' introuvable.")
+            self.jump_sound = None # On évite que le jeu plante si le son manque
+
+    def play_jump(self):
+        if self.jump_sound:
+            self.jump_sound.play()
 
 #LANCEMENT DU JEU##########################################################################
 
