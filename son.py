@@ -5,7 +5,7 @@ class SoundManager:
         # Initialisation du mélangeur de sons
         pygame.mixer.init()
         
-        # Dictionnaire pour stocker les sons
+        # Dictionnaire pour stocker les sons 
         self.sounds = {}
         
         # Chargement des effets sonores

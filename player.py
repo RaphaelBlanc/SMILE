@@ -1,5 +1,7 @@
 import pygame
+import os
 from capacite import Capacite
+from animator import Animator
 
 #ECRAN#
 SCREEN_WIDTH = 1920
@@ -23,6 +25,7 @@ PLAYER_SPEED = 6  #Vitesse de deplacement horizontale
 FRICTION = -0.12  #Resistance au sol pour un arret progressif
 HP_MAX = 100 # Points de vie max
 
+TARGET_SIZE = (64, 64) 
 
 #CLASS PLAYER########################################################################
 
@@ -36,14 +39,7 @@ class Player(pygame.sprite.Sprite): #la classe est une enfant de la classe Sprit
         self.rect = self.image.get_rect(topleft=pos) 
         self.direction = pygame.math.Vector2(0, 0)
 
-        """Ce vecteur est assez facilitant, on l'utilisera dans les fonctions
-        suivantes pour recuperer vers ou veux aller le joueur ainsi que l'application
-        de la gravite"""
-
         self.velocity = pygame.math.Vector2(0, 0)
-
-        """Ce vecteur va etre celui que l'on va ajouter a la position
-        on va pouvoir gerer l'inertie et d'autre chose avec"""
 
         self.count_jump = 0 #J'initialise un compteur pour faire un seul saut
         self.sound_manager = sound_manager #on stocke le gestionnaire de son pour l'utiliser plus tard
@@ -62,8 +58,33 @@ class Player(pygame.sprite.Sprite): #la classe est une enfant de la classe Sprit
         self.hp_current = 100
         self.health_bar_length = 200
 
+        self.animations = {'idle': [], 'run': [], 'sprint': [], 'death': [], 'attack': []}
+        self.load_assets()
+        self.animator = Animator(self.animations, fps=10)
+        self.status = 'idle'
+
+        self.is_sprinting = False
+
+        if len(self.animations['idle_right']) > 0:
+            self.image = self.animations['idle_right'][0]
+        else:
+            print("ERREUR CRITIQUE : Aucune image trouvée dans assets/idle_right/")
+            self.image = pygame.Surface((32, 64))
+            self.image.fill((255, 0, 0)) # Un carré rouge pour indiquer l'erreur
+
+        self.rect = self.image.get_rect(topleft=pos)
+        self.rect = self.image.get_rect(topleft=pos)
+
     def get_input(self):
         keys = pygame.key.get_pressed()
+
+        # Si Shift Gauche est pressé, is_sprinting devient True
+        if keys[pygame.K_LSHIFT]:
+            self.is_sprinting = True
+            self.speed = 10 # Tu peux aussi augmenter la vitesse ici
+        else:
+            self.is_sprinting = False
+            self.speed = 6
 
         # Mouvement + Direction du regard
         if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
@@ -89,9 +110,6 @@ class Player(pygame.sprite.Sprite): #la classe est une enfant de la classe Sprit
             self.jump_pressed = False
     
     def jump(self):
-        "Methode dedie au saut, on note qu'on fera par la suite un verification pour"
-        "savoir si notre personnage est sur le sol"
-
         if self.count_jump < 2 :
             self.direction.y = JUMP_FORCE
             self.count_jump += 1
@@ -103,10 +121,23 @@ class Player(pygame.sprite.Sprite): #la classe est une enfant de la classe Sprit
             self.direction.y = 16
 
 
-    def update(self, obstacles):
+    def update(self, obstacles, dt):
         self.get_input() 
-        
-        # --- GESTION DES CAPACITES ---
+        self.get_status()
+
+        raw_image = self.animator.get_current_frame(dt, self.status)
+
+        if self.facing_right:
+            self.image = raw_image
+        else:
+            self.image = pygame.transform.flip(raw_image, True, False)
+
+        if self.status == 'sprint':
+            self.animator.animation_speed = 1.0 / 12  # Plus rapide (12 FPS)
+        elif self.status == 'idle':
+            self.animator.animation_speed = 1.0 / 6   # Plus lent (6 FPS)
+
+        self.image = self.animator.get_current_frame(dt, self.status)
         self.capacite.bdf() # Vérifie si on tire
         self.capacite.projectiles.update(obstacles) # Met à jour les boules de feu existantes
         self.capacite.dash(obstacles) # Vérifie si on dash
@@ -152,3 +183,57 @@ class Player(pygame.sprite.Sprite): #la classe est une enfant de la classe Sprit
                     self.rect.top = hits[0].rect.bottom
                     self.direction.y = 0     # On se cogne la tête
       
+    def get_status(self):
+        # 1. On détermine l'action de base
+        if self.hp_current <= 0:
+            action = 'death'
+        elif pygame.key.get_pressed()[pygame.K_f]:
+            action = 'attack'
+        elif self.direction.x != 0:
+            action = 'sprint' if self.is_sprinting else 'run'
+        else:
+            action = 'idle'
+
+        direction_suffix = "_right" if self.facing_right else "_left"
+    
+        self.status = action + direction_suffix
+
+    def load_assets(self):
+        # 1. On prépare les clés
+        actions = ['idle', 'run', 'sprint', 'death', 'attack']
+        self.animations = {}
+        for action in actions:
+            self.animations[f"{action}_right"] = []
+            self.animations[f"{action}_left"] = []
+
+        # 2. Chemin vers ton dossier assets
+        # Si tes dossiers sont directement dans Bureau/SMILET/SMILE/assets/
+        base_path = 'assets/' 
+
+        # 3. On parcourt les dossiers d'animations
+        for state in self.animations.keys():
+            full_path = os.path.join(base_path, state)
+            
+            if os.path.exists(full_path):
+                # On récupère la liste des fichiers
+                files = sorted(os.listdir(full_path))
+                
+                for file_name in files: # On boucle sur CHAQUE fichier
+                    if file_name.lower().endswith('.png'): # .lower() gère .png et .PNG
+                        image_path = os.path.join(full_path, file_name)
+                        
+                        # Chargement et redimensionnement
+                        image_surf = pygame.image.load(image_path).convert_alpha()
+                        image_surf = pygame.transform.scale_by(image_surf, 0.5)
+                        
+                        # On ajoute l'image à la liste de cette animation
+                        self.animations[state].append(image_surf)
+            
+            # 4. Sécurité : Si après la boucle le dossier était vide ou absent
+            if len(self.animations[state]) == 0:
+                print(f"--- ATTENTION : Aucune image trouvée dans {full_path} ---")
+                placeholder = pygame.Surface((32, 64))
+                placeholder.fill((255, 0, 255)) # Rose pour indiquer une erreur
+                self.animations[state].append(placeholder)
+
+    

@@ -84,6 +84,7 @@ class Game:
         # --- UI DIALOGUE ---
         self.dialogue_box = DialogueBox(self.screen) # Création de l'interface
 
+
         # --- CHARGEMENT DE LA MAP TILED ---
         tmx_data = load_pygame('map.tmx') # Charge le fichier
 
@@ -115,9 +116,9 @@ class Game:
         self.player = Player((200, 200), self.sound_manager) # Position de départ arbitraire
         self.visibles_sprites.add(self.player) # On l'ajoute au groupe visible
 
-    def update(self):
+    def update(self,dt):
         if not self.is_paused:
-            self.player.update(self.obstacle_sprites)
+            self.player.update(self.obstacle_sprites, dt)
             for npc in self.npc_sprites:
                 npc.update(self.player.rect, self.dialogue_box)
 
@@ -153,6 +154,7 @@ class Game:
 
     def run(self):
         while True:
+            dt = self.clock.tick(FPS) / 1000.0
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     pygame.quit()
@@ -173,9 +175,8 @@ class Game:
                         pygame.quit()
                         sys.exit()
 
-            self.update()
+            self.update(dt)
             self.draw()
-            self.clock.tick(FPS)
 
 #LANCEMENT DU JEU##########################################################################
 
