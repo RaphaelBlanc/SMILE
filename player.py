@@ -58,12 +58,16 @@ class Player(pygame.sprite.Sprite): #la classe est une enfant de la classe Sprit
         self.hp_current = 100
         self.health_bar_length = 200
 
-        self.animations = {'idle': [], 'run': [], 'sprint': [], 'death': [], 'attack': []}
+        self.animations = {'idle': [], 'run': [], 'sprint': [], 'death': [], 'attack': [], 'land': [], 'back': [], 'jump': [], 'front': []}
         self.load_assets()
         self.animator = Animator(self.animations, fps=10)
         self.status = 'idle'
 
         self.is_sprinting = False
+
+        self.view_direction = 'side'
+
+        self.is_attacking = False
 
         if len(self.animations['idle_right']) > 0:
             self.image = self.animations['idle_right'][0]
@@ -77,6 +81,10 @@ class Player(pygame.sprite.Sprite): #la classe est une enfant de la classe Sprit
 
     def get_input(self):
         keys = pygame.key.get_pressed()
+
+        if keys[pygame.K_f] and not self.is_attacking:
+            self.is_attacking = True
+            self.animator.frame_index = 0 # On recommence l'animation au début
 
         # Si Shift Gauche est pressé, is_sprinting devient True
         if keys[pygame.K_LSHIFT]:
@@ -124,6 +132,13 @@ class Player(pygame.sprite.Sprite): #la classe est une enfant de la classe Sprit
     def update(self, obstacles, dt):
         self.get_input() 
         self.get_status()
+
+        if self.is_attacking:
+        # On ralentit (par ex: 0.05 au lieu de 0.1)
+            speed = 0.25
+        else:
+            speed = 0.15
+        self.animator.animation_speed = speed
 
         raw_image = self.animator.get_current_frame(dt, self.status)
 
@@ -184,27 +199,56 @@ class Player(pygame.sprite.Sprite): #la classe est une enfant de la classe Sprit
                     self.direction.y = 0     # On se cogne la tête
       
     def get_status(self):
-        # 1. On détermine l'action de base
-        if self.hp_current <= 0:
-            action = 'death'
-        elif pygame.key.get_pressed()[pygame.K_f]:
-            action = 'attack'
+        keys = pygame.key.get_pressed()
+        
+        # 1. GESTION DE LA MÉMOIRE DE VUE (Dos/Face)
+        if keys[pygame.K_w]:
+            self.view_direction = 'back'
+        elif keys[pygame.K_s]:
+            self.view_direction = 'front'
+
+        # 2. PRIORITÉ ABSOLUE : L'ATTAQUE
+        # Si on est en train d'attaquer, on ne regarde RIEN d'autre
+        if self.is_attacking:
+            self.status = 'attack' + ("_right" if self.facing_right else "_left")
+            
+            # Vérification de fin d'animation pour relâcher l'état d'attaque
+            if self.animator.frame_index >= len(self.animations[self.status]) - 1:
+                self.is_attacking = False
+            
+            return # TRÈS IMPORTANT : on sort de la fonction ici pour bloquer le reste
+
+        # 3. PRIORITÉ 2 : LE SAUT / CHUTE
+        if self.direction.y < -0.1 or self.direction.y > 1.1:
+            action = 'jump' if self.direction.y < 0 else 'land'
+            self.status = action + ("_right" if self.facing_right else "_left")
+            self.view_direction = 'side'
+
+        # 4. PRIORITÉ 3 : MOUVEMENT HORIZONTAL
         elif self.direction.x != 0:
             action = 'sprint' if self.is_sprinting else 'run'
-        else:
-            action = 'idle'
+            self.status = action + ("_right" if self.facing_right else "_left")
+            self.view_direction = 'side'
 
-        direction_suffix = "_right" if self.facing_right else "_left"
-    
-        self.status = action + direction_suffix
+        # 5. PRIORITÉ 4 : REPOS ET VUES SPÉCIALES (Dos / Face / Idle)
+        else:
+            if self.view_direction == 'back':
+                self.status = 'back'
+            elif self.view_direction == 'front':
+                self.status = 'front'
+            else:
+                self.status = 'idle' + ("_right" if self.facing_right else "_left")
 
     def load_assets(self):
         # 1. On prépare les clés
-        actions = ['idle', 'run', 'sprint', 'death', 'attack']
+        actions = ['idle', 'run', 'sprint', 'death', 'attack','jump','land','back','front']
         self.animations = {}
         for action in actions:
-            self.animations[f"{action}_right"] = []
-            self.animations[f"{action}_left"] = []
+            if action in ['jump', 'land', 'idle', 'run', 'sprint', 'death', 'attack']:
+                self.animations[f"{action}_right"] = []
+                self.animations[f"{action}_left"] = []
+            else:
+                self.animations[action] = []
 
         # 2. Chemin vers ton dossier assets
         # Si tes dossiers sont directement dans Bureau/SMILET/SMILE/assets/
