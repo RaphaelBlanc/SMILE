@@ -67,7 +67,8 @@ class Game:
         self.clock = pygame.time.Clock()
 
         # --- ETAT DU JEU (NOUVEAU) ---
-        self.is_paused = False # Par défaut, le jeu n'est pas en pause
+        self.is_paused = True   # commencer jeu en pause pour avoir un menu 
+        self.game_started = False # pour differencier 
 
         # --- GESTIONNAIRE DE SON ---
         self.sound_manager = SoundManager()
@@ -160,22 +161,40 @@ class Game:
                     pygame.quit()
                     sys.exit()
                 
-                # GESTION TOUCHE ECHAP (PAUSE)
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_ESCAPE:
-                        # On inverse l'état (Vrai devient Faux, Faux devient Vrai)
+                # 1. Gestion de la touche ECHAP
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    if self.game_started: # On ne peut toggle la pause que si le jeu a commencé
                         self.is_paused = not self.is_paused
                 
-                # GESTION CLICS SI MENU OUVERT
+                # 2. Gestion du MENU (Seulement si en pause)
                 if self.is_paused:
+                    # CRITIQUE : Il faut stocker le retour de handle_input
                     action = self.menu.handle_input(event)
-                    if action == "play":
-                        self.is_paused = False # On reprend le jeu
-                    if action == "quit":
+
+                    if action == "open_modes":
+                        if self.game_started:
+                            self.is_paused = False # Reprise simple si déjà en jeu
+                        else:
+                            self.menu.state = "mode_selection" # Change l'affichage interne du menu
+            
+                    elif action == "play_story":
+                        print("Mode Histoire lancé !") # Pour vérifier dans la console
+                        self.game_started = True
+                        self.is_paused = False
+        
+                    elif action == "play_multi":
+                        print("Mode Multi lancé !")
+                        self.game_started = True
+                        self.is_paused = False
+
+                    elif action == "quit":
                         pygame.quit()
                         sys.exit()
 
-            self.update(dt)
+            # Mise à jour et dessin
+            if not self.is_paused and self.game_started:
+                self.update(dt)
+            
             self.draw()
 
 #LANCEMENT DU JEU##########################################################################
