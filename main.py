@@ -258,7 +258,7 @@ class Game:
         self.game_started  = True
         self.is_paused     = False
         # Crée le fantôme du joueur distant
-        self.remote_player = RemotePlayer((300, 200))
+        self.remote_player = RemotePlayer(self.player.rect.topleft)
         self.visibles_sprites.add(self.remote_player)
 
     def _network_update(self, dt):
