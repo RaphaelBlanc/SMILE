@@ -10,6 +10,7 @@ from son import SoundManager
 from menu import Menu
 from npc import NPC
 from npc import DialogueBox
+from network import Network
 from monstre import (
     ChienEnrage, GoblinMelee, GoblinArcher,
     EspritFeu, EspritGlace, EspritFoudre, EspritNature,
@@ -100,12 +101,6 @@ class Tile(pygame.sprite.Sprite):
 #CLASS CAMERA (ton code)#############################################################
 
 class Camera:
-    """
-    Gere le decalage (offset) de la camera pour centrer l'ecran sur le joueur.
-    - Lerp (glissement doux).
-    - Blocage aux 4 bords de la map.
-    """
-
     def __init__(self, map_width, map_height):
         self.map_width  = map_width
         self.map_height = map_height
@@ -115,15 +110,30 @@ class Camera:
     def update(self, target_rect):
         target_x = target_rect.centerx - SCREEN_WIDTH  // 2
         target_y = target_rect.centery - SCREEN_HEIGHT // 2
-
         self.offset.x += (target_x - self.offset.x) * self.lerp_speed
         self.offset.y += (target_y - self.offset.y) * self.lerp_speed
-
         self.offset.x = max(0, min(self.offset.x, self.map_width  - SCREEN_WIDTH))
         self.offset.y = max(0, min(self.offset.y, self.map_height - SCREEN_HEIGHT))
 
     def apply(self, rect):
         return rect.move(-int(self.offset.x), -int(self.offset.y))
+
+#CLASS REMOTE PLAYER (fantôme de l'autre joueur) #####################################
+
+class RemotePlayer(pygame.sprite.Sprite):
+    """Représentation locale du joueur distant — mis à jour par les messages réseau."""
+    def __init__(self, pos):
+        super().__init__()
+        self.image = pygame.Surface((32, 64))
+        self.image.fill((0, 200, 255))      # cyan pour distinguer
+        self.rect  = self.image.get_rect(topleft=pos)
+        self.hp_current = 100
+        self.hp_max     = 100
+
+    def apply_state(self, state: dict):
+        self.rect.x     = state.get("x",  self.rect.x)
+        self.rect.y     = state.get("y",  self.rect.y)
+        self.hp_current = state.get("hp", self.hp_current)
 
 #CLASS GAME#########################################################################
 
@@ -133,9 +143,9 @@ class Game:
         pygame.init()
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         pygame.display.set_caption("SMILE")
-        self.clock = pygame.time.Clock()
+        self.clock  = pygame.time.Clock()
 
-        # Polices HUD (Hugo)
+        # Polices HUD
         self.font_hud   = pygame.font.SysFont("consolas", 18, bold=True)
         self.font_small = pygame.font.SysFont("consolas", 14)
         self.font_title = pygame.font.SysFont("consolas", 42, bold=True)
@@ -147,35 +157,40 @@ class Game:
         self.kill_count   = 0
         self.particles    = []
 
-        # Screen-shake pour GolemPierre (Hugo)
+        # Screen-shake pour GolemPierre
         self.shake_ref = [0]
 
-        # --- GESTIONNAIRE DE SON ---
+        # --- MODE MULTI ---
+        self.network       = None          # Network() créé à la demande
+        self.is_multi      = False         # True si partie réseau
+        self.remote_player = None          # RemotePlayer (l'autre joueur)
+        self.net_timer     = 0             # compteur pour envoi état (host)
+
+        # --- SON / MENU ---
         self.sound_manager = SoundManager()
-        self.menu = Menu(self.screen)
+        self.menu          = Menu(self.screen)
 
         # --- GROUPES DE SPRITES ---
         self.visibles_sprites   = pygame.sprite.Group()
         self.obstacle_sprites   = pygame.sprite.Group()
         self.npc_sprites        = pygame.sprite.Group()
-        self.ladder_sprites     = pygame.sprite.Group()   # ton code
-        self.monster_sprites    = pygame.sprite.Group()   # Hugo
-        self.enemy_proj_sprites = pygame.sprite.Group()   # Hugo
-        self.vfx_sprites        = pygame.sprite.Group()   # Hugo
+        self.ladder_sprites     = pygame.sprite.Group()
+        self.monster_sprites    = pygame.sprite.Group()
+        self.enemy_proj_sprites = pygame.sprite.Group()
+        self.vfx_sprites        = pygame.sprite.Group()
 
         # --- UI DIALOGUE ---
         self.dialogue_box = DialogueBox(self.screen)
 
-        # --- CHARGEMENT DE LA MAP TILED (map1.tmx = ton code) ---
+        # --- CHARGEMENT DE LA MAP ---
         tmx_data = load_pygame('map1.tmx')
-
         map_pixel_width  = tmx_data.width  * tmx_data.tilewidth
         map_pixel_height = tmx_data.height * tmx_data.tileheight
 
-        # --- CAMERA ---
+        # Camera
         self.camera = Camera(map_pixel_width, map_pixel_height)
 
-        # --- FOND ---
+        # Fond
         try:
             layer_fond = tmx_data.get_layer_by_name('Background')
             self.background_image = layer_fond.image
@@ -184,21 +199,20 @@ class Game:
             self.background_image = pygame.Surface((map_pixel_width, map_pixel_height))
             self.background_image.fill((50, 50, 50))
 
-        # --- TILES DE COLLISION ---
+        # Collisions
         for x, y, surf in tmx_data.get_layer_by_name('Collisions').tiles():
             if surf:
                 Tile((x * 32, y * 32), surf, [self.obstacle_sprites])
 
-        # --- TILES D'ECHELLE (ton code) ---
+        # Echelles
         try:
             for x, y, surf in tmx_data.get_layer_by_name('Echelles').tiles():
-                pos = (x * 32, y * 32)
-                Tile(pos, surf, [self.ladder_sprites])
+                Tile((x * 32, y * 32), surf, [self.ladder_sprites])
             print(f"INFO : {len(self.ladder_sprites)} tuile(s) d'echelle chargee(s).")
         except ValueError:
             print("INFO : Calque 'Echelles' introuvable — echelles ignorees.")
 
-        # --- OBJETS TILED : monstres, PNJ, spawn joueur (Hugo) ---
+        # Objets Tiled
         player_spawn = (200, 200)
         try:
             for obj in tmx_data.get_layer_by_name('Objets'):
@@ -214,19 +228,100 @@ class Game:
         except ValueError:
             print("INFO : Calque 'Objets' introuvable — monstres non charges depuis Tiled.")
 
-        # Fallback PNJ si aucun calque Objets
         if not any(self.npc_sprites):
             NPC((600, 500), "Salut Voyageur ! Attention aux trous !",
                 [self.visibles_sprites, self.npc_sprites])
 
-        # --- JOUEUR ---
+        # Joueur local
         self.player = Player(player_spawn, self.sound_manager)
         self.visibles_sprites.add(self.player)
 
-    # -------------------------------------------------------------------------
+    # ── Gestion réseau ────────────────────────────────────────────
+
+    def _ensure_network(self):
+        """Crée et connecte le Network si ce n'est pas déjà fait."""
+        if self.network is None:
+            self.network = Network()
+            self.network.connect()
+
+    def _start_multi_as_host(self):
+        self._ensure_network()
+        self.network.create_session()
+
+    def _start_multi_as_client(self, code: str):
+        self._ensure_network()
+        self.network.join_session(code)
+
+    def _launch_multi_game(self):
+        """Démarre effectivement la partie multi (appelé quand les 2 joueurs sont prêts)."""
+        self.is_multi      = True
+        self.game_started  = True
+        self.is_paused     = False
+        # Crée le fantôme du joueur distant
+        self.remote_player = RemotePlayer((300, 200))
+        self.visibles_sprites.add(self.remote_player)
+
+    def _network_update(self, dt):
+        """Envoi/réception réseau — appelé chaque frame quand multi actif."""
+        if self.network is None:
+            return
+
+        # ── HOST : envoie l'état, reçoit les inputs du client ──────
+        if self.network.role == "host":
+            self.net_timer += dt
+            if self.net_timer >= 1 / 20:          # 20 fois/seconde
+                self.net_timer = 0
+                state = {
+                    "p1_x":  self.player.rect.x,
+                    "p1_y":  self.player.rect.y,
+                    "p1_hp": self.player.hp_current,
+                }
+                if self.remote_player:
+                    state["p2_x"]  = self.remote_player.rect.x
+                    state["p2_y"]  = self.remote_player.rect.y
+                    state["p2_hp"] = self.remote_player.hp_current
+                self.network.send_game_state(state)
+
+            for msg in self.network.poll():
+                if msg.get("action") == "input":
+                    self._apply_client_inputs(msg.get("keys", []))
+
+        # ── CLIENT : envoie les inputs, reçoit l'état du host ──────
+        elif self.network.role == "client":
+            keys = pygame.key.get_pressed()
+            pressed = [k for k in [
+                pygame.K_LEFT, pygame.K_RIGHT, pygame.K_a, pygame.K_d,
+                pygame.K_SPACE, pygame.K_LSHIFT, pygame.K_f, pygame.K_v,
+                pygame.K_z, pygame.K_s, pygame.K_UP, pygame.K_DOWN,
+            ] if keys[k]]
+            self.network.send_input(pressed)
+
+            for msg in self.network.poll():
+                if msg.get("action") == "game_state":
+                    # Le joueur local du client = p2 dans l'état host
+                    self.player.rect.x        = msg.get("p2_x", self.player.rect.x)
+                    self.player.rect.y        = msg.get("p2_y", self.player.rect.y)
+                    self.player.hp_current    = msg.get("p2_hp", self.player.hp_current)
+                    if self.remote_player:
+                        self.remote_player.rect.x     = msg.get("p1_x", self.remote_player.rect.x)
+                        self.remote_player.rect.y     = msg.get("p1_y", self.remote_player.rect.y)
+                        self.remote_player.hp_current = msg.get("p1_hp", self.remote_player.hp_current)
+
+    def _apply_client_inputs(self, keys: list):
+        """Le host applique les touches reçues du client sur remote_player.
+        (Implémentation simplifiée — déplace le sprite distant en fonction des touches.)"""
+        if self.remote_player is None:
+            return
+        speed = 6
+        if pygame.K_RIGHT in keys or pygame.K_d in keys:
+            self.remote_player.rect.x += speed
+        if pygame.K_LEFT  in keys or pygame.K_a in keys:
+            self.remote_player.rect.x -= speed
+        # Pour un vrai jeu, il faudrait appliquer la physique complète ici.
+
+    # ── Spawn mobs ────────────────────────────────────────────────
 
     def _spawn_mob(self, obj_type, pos):
-        """Instancie un monstre selon son type Tiled (Hugo)."""
         groups    = [self.monster_sprites]
         mob_class = MOB_CLASSES[obj_type]
         if obj_type == "GoblinArcher":
@@ -238,36 +333,40 @@ class Game:
         else:
             mob_class(pos, groups)
 
-    # -------------------------------------------------------------------------
+    # ── Update ────────────────────────────────────────────────────
 
     def update(self, dt):
         if not self.is_paused:
+            # Réseau
+            if self.is_multi:
+                self._network_update(dt)
 
-            # JOUEUR
+            # Joueur local (le client ne contrôle son perso que si rôle client,
+            # le host contrôle le sien normalement)
             if self.player.hp_current > 0:
+                # En mode client on laisse quand même le joueur se mettre à jour
+                # visuellement (la position sera écrasée par l'état réseau)
                 self.player.update(self.obstacle_sprites, self.ladder_sprites, dt)
 
             # NPC
             for npc in self.npc_sprites:
                 npc.update(self.player.rect, self.dialogue_box)
 
-            # CAMERA (ton code)
+            # Camera
             self.camera.update(self.player.rect)
 
-            # MONSTRES (Hugo)
+            # Monstres
             for m in list(self.monster_sprites):
                 m.update(self.player, self.obstacle_sprites)
 
                 if hasattr(m, 'heal_allies'):
                     m.heal_allies(self.monster_sprites)
 
-                # Contact joueur
                 if m.rect.colliderect(self.player.rect) and self.player.hp_current > 0:
                     if m.contact_timer <= 0:
                         self.player.take_damage(getattr(m, 'ATTACK_DAMAGE', 10))
                         m.contact_timer = m.CONTACT_COOLDOWN
 
-                # Mort du monstre → particules + score
                 if m.dead:
                     mob_type = type(m).__name__
                     self.score      += MOB_XP.get(mob_type, 10)
@@ -298,10 +397,9 @@ class Game:
                 p.update()
             self.particles = [p for p in self.particles if p.life > 0]
 
-    # -------------------------------------------------------------------------
+    # ── Draw ──────────────────────────────────────────────────────
 
     def draw_health_bar(self):
-        """Barre de vie fixe en haut a gauche."""
         x, y  = 50, 50
         ratio = max(0, self.player.hp_current / self.player.hp_max)
         bar_w = self.player.health_bar_length
@@ -310,7 +408,6 @@ class Game:
         pygame.draw.rect(self.screen, BLACK, (x, y, bar_w, 20), 3)
 
     def draw_status_indicators(self):
-        """Affiche les indicateurs de statut (poison/ralenti/brulure) — Hugo."""
         y = 80
         p = self.player
         if p.is_poisoned and p.poison_timer > 0:
@@ -328,67 +425,71 @@ class Game:
             self.screen.blit(
                 self.font_hud.render(f"BRULURE {s}s", True, (255, 120, 0)), (50, y))
 
+    def draw_remote_health_bar(self):
+        """Barre de vie du joueur distant (haut droite)."""
+        if self.remote_player is None:
+            return
+        x = SCREEN_WIDTH - 250
+        y = 50
+        ratio = max(0, self.remote_player.hp_current / self.remote_player.hp_max)
+        bar_w = 200
+        pygame.draw.rect(self.screen, RED,            (x, y, bar_w, 20))
+        pygame.draw.rect(self.screen, (0, 200, 255),  (x, y, int(bar_w * ratio), 20))
+        pygame.draw.rect(self.screen, BLACK,           (x, y, bar_w, 20), 3)
+        lbl = self.font_small.render("P2", True, (0, 200, 255))
+        self.screen.blit(lbl, (x - 30, y))
+
     def draw(self):
         if self.is_paused:
-            self.menu.draw(self.game_started)
+            self.menu.draw(self.game_started, self.network)
         else:
-            # --- SCREEN-SHAKE (Hugo) ---
             shake = 0
             if self.shake_ref[0] > 0:
                 self.shake_ref[0] -= 1
                 shake = random.randint(-6, 6)
 
-            # 1. FOND avec offset camera + shake
             self.screen.blit(
                 self.background_image,
                 (-int(self.camera.offset.x) + shake,
-                 -int(self.camera.offset.y) + shake)
-            )
+                 -int(self.camera.offset.y) + shake))
 
-            # 2. SPRITES DU MONDE avec offset camera
             for sprite in self.visibles_sprites:
                 self.screen.blit(sprite.image, self.camera.apply(sprite.rect))
 
-            # 3. PROJECTILES JOUEUR avec offset camera
             for projectile in self.player.capacite.projectiles:
                 self.screen.blit(projectile.image, self.camera.apply(projectile.rect))
 
-            # 4. PROJECTILES ENNEMIS avec offset camera
             for ep in self.enemy_proj_sprites:
                 self.screen.blit(ep.image, self.camera.apply(ep.rect))
 
-            # 5. MONSTRES + barres de vie avec offset camera (Hugo)
             for m in self.monster_sprites:
                 self.screen.blit(m.image, self.camera.apply(m.rect))
-                # Barre de vie flottante : on la dessine a la position ecran
                 bar_rect = m.rect.move(-int(self.camera.offset.x),
                                        -int(self.camera.offset.y))
                 bw, bh = bar_rect.width, 6
                 bx, by = bar_rect.left, bar_rect.top - 12
                 ratio  = max(0.0, m.hp_current / m.hp_max)
-                pygame.draw.rect(self.screen, (139, 0, 0),    (bx, by, bw, bh))
-                pygame.draw.rect(self.screen, (0, 220, 0),    (bx, by, int(bw * ratio), bh))
-                pygame.draw.rect(self.screen, BLACK,           (bx, by, bw, bh), 1)
+                pygame.draw.rect(self.screen, (139, 0, 0), (bx, by, bw, bh))
+                pygame.draw.rect(self.screen, (0, 220, 0), (bx, by, int(bw * ratio), bh))
+                pygame.draw.rect(self.screen, BLACK,        (bx, by, bw, bh), 1)
 
-            # 6. VFX avec offset camera
             for vfx in self.vfx_sprites:
                 self.screen.blit(vfx.image, self.camera.apply(vfx.rect))
 
-            # 7. PARTICULES (deja en coordonnees ecran via positions absolues)
             for p in self.particles:
                 p.draw(self.screen)
 
-            # 8. UI FIXE (sans offset)
             self.dialogue_box.draw()
             self.draw_health_bar()
             self.draw_status_indicators()
 
-            # Score (Hugo)
+            if self.is_multi:
+                self.draw_remote_health_bar()
+
             score_txt = self.font_hud.render(
                 f"Score : {self.score}   Kills : {self.kill_count}", True, WHITE)
             self.screen.blit(score_txt, (SCREEN_WIDTH - score_txt.get_width() - 20, 20))
 
-            # 9. GAME OVER (Hugo)
             if self.player.hp_current <= 0:
                 overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
                 overlay.fill((0, 0, 0, 140))
@@ -399,7 +500,7 @@ class Game:
 
         pygame.display.flip()
 
-    # -------------------------------------------------------------------------
+    # ── Boucle principale ─────────────────────────────────────────
 
     def run(self):
         while True:
@@ -410,15 +511,13 @@ class Game:
                     pygame.quit()
                     sys.exit()
 
-                # ECHAP — toggle pause si jeu deja commence
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     if self.game_started:
                         self.is_paused = not self.is_paused
                         self.menu.state = "main"
 
-                # MENU
                 if self.is_paused:
-                    action = self.menu.handle_input(event)
+                    action = self.menu.handle_input(event, self.network)
 
                     if action == "open_modes":
                         if self.game_started:
@@ -427,18 +526,40 @@ class Game:
                             self.menu.state = "mode_selection"
 
                     elif action == "play_story":
-                        print("Mode Histoire lance !")
+                        print("Mode Histoire lancé !")
                         self.game_started = True
                         self.is_paused    = False
 
-                    elif action == "play_multi":
-                        print("Mode Multi lance !")
-                        self.game_started = True
-                        self.is_paused    = False
+                    # ── HOST crée une session ───────────────────────
+                    elif action == "multi_create_session":
+                        print("Création de session multi...")
+                        self._start_multi_as_host()
+
+                    # ── CLIENT rejoint une session ──────────────────
+                    elif action == "multi_join_session":
+                        code = self.menu.input_code
+                        print(f"Tentative de rejoindre le salon : {code}")
+                        self._start_multi_as_client(code)
 
                     elif action == "quit":
                         pygame.quit()
                         sys.exit()
+
+            # ── Vérification état réseau (en dehors des events) ─────
+            if self.network is not None and self.is_paused:
+                # HOST : la partie démarre quand le pair a rejoint
+                if (self.network.role == "host"
+                        and self.menu.state == "multi_host_wait"
+                        and self.network.peer_joined):
+                    print("Pair connecté ! Démarrage de la partie multi.")
+                    self._launch_multi_game()
+
+                # CLIENT : la partie démarre dès que le serveur confirme "joined"
+                elif (self.network.role == "client"
+                        and self.menu.state == "multi_join_wait"
+                        and self.network.peer_joined):
+                    print("Code valide ! Démarrage de la partie multi.")
+                    self._launch_multi_game()
 
             self.update(dt)
             self.draw()
