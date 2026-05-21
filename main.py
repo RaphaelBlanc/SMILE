@@ -233,7 +233,7 @@ class Game:
                 [self.visibles_sprites, self.npc_sprites])
 
         # Joueur local
-        self.player = Player(player_spawn, self.sound_manager)
+        self.player = Player(player_spawn, self.sound_manager, self.menu.keybinds)
         self.visibles_sprites.add(self.player)
 
     # ── Gestion réseau ────────────────────────────────────────────
