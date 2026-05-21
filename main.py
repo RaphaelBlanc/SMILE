@@ -519,7 +519,11 @@ class Game:
                 if self.is_paused:
                     action = self.menu.handle_input(event, self.network)
 
-                    if action == "open_modes":
+                    # Slider volume — action est un tuple ("volume_changed", valeur)
+                    if isinstance(action, tuple) and action[0] == "volume_changed":
+                        self.sound_manager.set_volume(action[1])
+
+                    elif action == "open_modes":
                         if self.game_started:
                             self.is_paused = False
                         else:

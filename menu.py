@@ -78,6 +78,16 @@ class Menu:
         self.btn_confirm_code = self._btn(center_x, SCREEN_HEIGHT // 2 + 130, 300, 70)
         self.btn_back_join    = self._btn(center_x, SCREEN_HEIGHT // 2 + 250, 250, 60)
 
+        # ── Slider volume (paramètres) ──────────────────────────────
+        self.volume           = 1.0          # 0.0 → 1.0
+        slider_w              = 500
+        self.slider_rect      = pygame.Rect(center_x - slider_w // 2,
+                                            SCREEN_HEIGHT // 2 + 20,
+                                            slider_w, 12)
+        self.slider_handle_r  = 18           # rayon de la poignée
+        self.slider_dragging  = False
+        self.btn_back_settings = self._btn(center_x, SCREEN_HEIGHT // 2 + 200, 250, 60)
+
     # ── Helpers ────────────────────────────────────────────────────
 
     @staticmethod
@@ -143,7 +153,32 @@ class Menu:
         # ── Paramètres ──────────────────────────────────────────────
         elif self.state == "settings":
             self.draw_text("PARAMETRES", self.titre_font, WHITE, cx, 250)
-            self.draw_button(self.btn_back, "RETOUR", GREY, WHITE, mouse_pos)
+
+            # Label volume
+            self.draw_text("VOLUME", self.button_font, WHITE, cx, SCREEN_HEIGHT // 2 - 60)
+
+            # Piste du slider (fond grisé)
+            pygame.draw.rect(self.screen, GREY, self.slider_rect, border_radius=6)
+
+            # Partie remplie (en bleu)
+            filled_w = int(self.slider_rect.width * self.volume)
+            filled_rect = pygame.Rect(self.slider_rect.x, self.slider_rect.y,
+                                      filled_w, self.slider_rect.height)
+            pygame.draw.rect(self.screen, BLUE_MENU, filled_rect, border_radius=6)
+
+            # Poignée
+            handle_x = self.slider_rect.x + filled_w
+            handle_y = self.slider_rect.centery
+            pygame.draw.circle(self.screen, WHITE, (handle_x, handle_y), self.slider_handle_r)
+            pygame.draw.circle(self.screen, BLUE_HOVER, (handle_x, handle_y),
+                               self.slider_handle_r, 3)
+
+            # Pourcentage
+            pct_text = f"{int(self.volume * 100)} %"
+            self.draw_text(pct_text, self.button_font, YELLOW, cx,
+                           self.slider_rect.bottom + 45)
+
+            self.draw_button(self.btn_back_settings, "RETOUR", GREY, WHITE, mouse_pos)
 
         # ── Lobby multi : choisir host ou client ────────────────────
         elif self.state == "multi_lobby":
@@ -221,6 +256,25 @@ class Menu:
                 self.input_code += event.unicode.upper()
             return None
 
+        # ── Slider volume : clic + drag ─────────────────────────────
+        if self.state == "settings":
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                hx = self.slider_rect.x + int(self.slider_rect.width * self.volume)
+                hy = self.slider_rect.centery
+                dist = ((event.pos[0] - hx) ** 2 + (event.pos[1] - hy) ** 2) ** 0.5
+                # Clic sur la poignée OU sur la piste
+                if dist <= self.slider_handle_r + 4 or self.slider_rect.collidepoint(event.pos):
+                    self.slider_dragging = True
+                    self._update_slider(event.pos[0])
+                    return ("volume_changed", self.volume)
+
+            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                self.slider_dragging = False
+
+            elif event.type == pygame.MOUSEMOTION and self.slider_dragging:
+                self._update_slider(event.pos[0])
+                return ("volume_changed", self.volume)
+
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
 
             # Activer/désactiver la zone de saisie
@@ -241,7 +295,7 @@ class Menu:
 
             # ── settings ────────────────────────────────────────────
             elif self.state == "settings":
-                if self.btn_back.collidepoint(event.pos): self.state = "main"
+                if self.btn_back_settings.collidepoint(event.pos): self.state = "main"
 
             # ── multi_lobby ─────────────────────────────────────────
             elif self.state == "multi_lobby":
@@ -275,6 +329,11 @@ class Menu:
                         self.state = "multi_lobby"
 
         return None
+
+    def _update_slider(self, mouse_x):
+        """Recalcule self.volume selon la position X de la souris sur la piste."""
+        relative = mouse_x - self.slider_rect.x
+        self.volume = max(0.0, min(1.0, relative / self.slider_rect.width))
 
     def _try_join(self, network):
         """Valide le code et lance la tentative de connexion."""
