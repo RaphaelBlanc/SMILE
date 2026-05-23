@@ -183,7 +183,7 @@ class Game:
         self.dialogue_box = DialogueBox(self.screen)
 
         # --- CHARGEMENT DE LA MAP ---
-        tmx_data = load_pygame('map1.tmx')
+        tmx_data = load_pygame('assets/maps/map1.tmx')
         map_pixel_width  = tmx_data.width  * tmx_data.tilewidth
         map_pixel_height = tmx_data.height * tmx_data.tileheight
 

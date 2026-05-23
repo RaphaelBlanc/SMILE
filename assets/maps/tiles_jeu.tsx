@@ -2,9 +2,9 @@
 <tileset version="1.10" tiledversion="1.11.2" name="tiles_jeu" tilewidth="32" tileheight="32" tilecount="2" columns="0">
  <grid orientation="orthogonal" width="1" height="1"/>
  <tile id="0">
-  <image source="bloc_echelle.png" width="32" height="32"/>
+  <image source="../images/bloc_echelle.png" width="32" height="32"/>
  </tile>
  <tile id="1">
-  <image source="bloc_collision.png" width="32" height="32"/>
+  <image source="../images/bloc_collision.png" width="32" height="32"/>
  </tile>
 </tileset>

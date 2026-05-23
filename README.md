@@ -34,7 +34,7 @@ Pour faire tourner le jeu en local, vous aurez besoin de Python 3 et des bibliot
 Lancez simplement le fichier principal depuis la racine du projet :
 
 ```bash
-python main.py
+python src/main.py
 ```
 
 ### 🎮 Contrôles Principaux
@@ -53,8 +53,9 @@ Le jeu dispose d'un menu intuitif permettant de créer ou de rejoindre une sessi
 
 ## 📁 Architecture du Code (Aperçu)
 
-*   `main.py` : Cœur du jeu, boucle principale, rendu global (HUD, Caméra) et gestion des événements.
-*   `player.py` / `monstre.py` / `npc.py` : Logique et comportements des différentes entités.
-*   `network.py` : Logique de communication réseau par sockets.
-*   `menu.py` : UI de sélection des modes et pause.
-*   `map1.tmx` / `tiles_jeu.tsx` : Cartes du jeu éditées avec Tiled.
+*   `src/main.py` : Cœur du jeu, boucle principale, rendu global (HUD, Caméra) et gestion des événements.
+*   `src/player.py` / `src/monstre.py` / `src/npc.py` : Logique et comportements des différentes entités.
+*   `src/network.py` : Logique de communication réseau par sockets.
+*   `src/menu.py` : UI de sélection des modes et pause.
+*   `assets/maps/` : Cartes du jeu éditées avec Tiled (`map1.tmx`, `tiles_jeu.tsx`).
+*   `assets/images/`, `assets/audio/`, `assets/video/` : Ressources graphiques et sonores classées par dossiers.

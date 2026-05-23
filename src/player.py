@@ -105,7 +105,7 @@ class Player(pygame.sprite.Sprite):
         if len(self.animations['idle_right']) > 0:
             self.image = self.animations['idle_right'][0]
         else:
-            print("ERREUR CRITIQUE : Aucune image trouvée dans assets/idle_right/")
+            print("ERREUR CRITIQUE : Aucune image trouvée dans assets/images/player/idle_right/")
             self.image = pygame.Surface((32, 64))
             self.image.fill((255, 0, 0))
 
@@ -367,7 +367,7 @@ class Player(pygame.sprite.Sprite):
             else:
                 self.animations[action] = []
 
-        base_path = 'assets/'
+        base_path = 'assets/images/player/'
         for state in self.animations.keys():
             full_path = os.path.join(base_path, state)
             if os.path.exists(full_path):

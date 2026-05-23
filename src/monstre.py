@@ -119,12 +119,12 @@ class BaseEnemy(pygame.sprite.Sprite):
     # ── Chargeur PNG ─────────────────────────────────────────────
     def _load_sprites(self, folder_name, states, target_size):
         """
-        Charge assets/monstres/<folder_name>/<etat>/frame_XXX.png
+        Charge assets/images/monstres/<folder_name>/<etat>/frame_XXX.png
         Ne plante pas si les fichiers sont absents.
         """
-        base = os.path.join("assets", "monstres", folder_name)
+        dossier_base = os.path.join("assets", "images", "monstres", folder_name)
         for state in states:
-            path = os.path.join(base, state)
+            path = os.path.join(dossier_base, state)
             if not os.path.isdir(path):
                 continue
             frames = []
@@ -1098,7 +1098,7 @@ class GolemPierre(BaseEnemy):
 ──────────────────────────────────────────────────────────────────
   Décommenter _load_sprites() dans chaque __init__.
   Structure :
-    assets/monstres/chien_enrage/wander/frame_001.png ...
+    assets/images/monstres/chien_enrage/wander/frame_001.png ...
   Puis dans update() :
     self.image = self._animate(self.state, dt)
     if not self.facing_right:
