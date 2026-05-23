@@ -36,11 +36,11 @@ class Capacite:
         self.fire_cooldown = 500
         self.projectiles = pygame.sprite.Group()
 
-    def dash(self, obstacles):
+    def dash(self, obstacles, dash_key=pygame.K_v):
         current_time = pygame.time.get_ticks()
         keys = pygame.key.get_pressed()
 
-        if keys[pygame.K_v] and (current_time - self.last_dash_time > 1000):
+        if keys[dash_key] and (current_time - self.last_dash_time > 1000):
             if self.player.facing_right:
                 direction_finale = 1  # Vers la droite
             else:
@@ -53,11 +53,11 @@ class Capacite:
             self.player.direction.y = 0 
             self.last_dash_time = current_time
 
-    def bdf(self):
+    def bdf(self, attack_key=pygame.K_f):
         keys = pygame.key.get_pressed()
         current_time = pygame.time.get_ticks() 
         
-        if keys[pygame.K_f] and (current_time - self.last_fire_time > self.fire_cooldown): 
+        if keys[attack_key] and (current_time - self.last_fire_time > self.fire_cooldown): 
             if self.player.facing_right:
                 direction = 1
             else:

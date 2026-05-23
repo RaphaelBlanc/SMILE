@@ -36,7 +36,7 @@ TARGET_SIZE = (64, 64)
 
 class Player(pygame.sprite.Sprite):
 
-    def __init__(self, pos, sound_manager):
+    def __init__(self, pos, sound_manager, keybinds=None):
         super().__init__()
         self.image = pygame.Surface((32, 64))
         self.image.fill(RED)
@@ -48,6 +48,18 @@ class Player(pygame.sprite.Sprite):
         self.count_jump   = 0
         self.jump_pressed = False
         self.sound_manager = sound_manager
+
+        # --- TOUCHES CONFIGURABLES ---
+        self.keybinds = keybinds or {
+            "move_left":  pygame.K_q,
+            "move_right": pygame.K_d,
+            "move_up":    pygame.K_z,
+            "move_down":  pygame.K_s,
+            "jump":       pygame.K_SPACE,
+            "sprint":     pygame.K_LSHIFT,
+            "attack":     pygame.K_f,
+            "dash":       pygame.K_v,
+        }
 
         # --- VITESSE ET DIRECTION ---
         self.facing_right  = True
@@ -117,14 +129,15 @@ class Player(pygame.sprite.Sprite):
 
     def get_input(self, ladder_sprites):
         keys = pygame.key.get_pressed()
+        kb   = self.keybinds   # raccourci lisible
 
         # ATTAQUE
-        if keys[pygame.K_f] and not self.is_attacking:
+        if keys[kb["attack"]] and not self.is_attacking:
             self.is_attacking = True
             self.animator.frame_index = 0
 
         # SPRINT
-        if keys[pygame.K_LSHIFT]:
+        if keys[kb["sprint"]]:
             self.is_sprinting = True
             self.speed = 10
         else:
@@ -134,44 +147,42 @@ class Player(pygame.sprite.Sprite):
         # DETECTION ECHELLE
         touching_ladder = bool(pygame.sprite.spritecollide(self, ladder_sprites, False))
         if touching_ladder:
-            if keys[pygame.K_z] or keys[pygame.K_UP]:
+            if keys[kb["move_up"]]:
                 self.on_ladder = True
-            if keys[pygame.K_s] or keys[pygame.K_DOWN]:
+            if keys[kb["move_down"]]:
                 self.on_ladder = True
         else:
             self.on_ladder = False
 
         # MOUVEMENT HORIZONTAL
-        # Sur l'echelle : autorise gauche/droite pour changer d'etage.
-        # Appuyer gauche/droite fait quitter l'echelle et retrouve la physique normale.
-        moving_horizontal = (keys[pygame.K_RIGHT] or keys[pygame.K_d]
-                          or keys[pygame.K_LEFT]  or keys[pygame.K_a])
+        moving_right      = keys[kb["move_right"]]
+        moving_left       = keys[kb["move_left"]]
+        moving_horizontal = moving_right or moving_left
 
         if moving_horizontal:
-            if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-                self.direction.x = 1
+            if moving_right:
+                self.direction.x  = 1
                 self.facing_right = True
-            elif keys[pygame.K_LEFT] or keys[pygame.K_a]:
-                self.direction.x = -1
+            elif moving_left:
+                self.direction.x  = -1
                 self.facing_right = False
-            # Quitter l'echelle si on se deplace horizontalement
             if self.on_ladder:
                 self.on_ladder = False
         else:
             self.direction.x = 0
 
         # VITESSE
-        if keys[pygame.K_LSHIFT]:
+        if keys[kb["sprint"]]:
             self.current_speed = self.sprint_speed
         else:
             self.current_speed = self.normal_speed
 
-        # SAUT — quitte aussi l'echelle pour sauter depuis celle-ci
-        if keys[pygame.K_SPACE] and not self.jump_pressed:
+        # SAUT
+        if keys[kb["jump"]] and not self.jump_pressed:
             self.on_ladder = False
             self.jump()
             self.jump_pressed = True
-        if not keys[pygame.K_SPACE]:
+        if not keys[kb["jump"]]:
             self.jump_pressed = False
 
     def jump(self):
@@ -250,9 +261,9 @@ class Player(pygame.sprite.Sprite):
             blink.set_alpha(80)
             self.image = blink
 
-        self.capacite.bdf()
+        self.capacite.bdf(self.keybinds["attack"])
         self.capacite.projectiles.update(obstacles)
-        self.capacite.dash(obstacles)
+        self.capacite.dash(obstacles, self.keybinds["dash"])
 
         # PHYSIQUE : gravite normale OU echelle
         if self.on_ladder:
@@ -302,10 +313,11 @@ class Player(pygame.sprite.Sprite):
 
     def get_status(self):
         keys = pygame.key.get_pressed()
+        kb   = self.keybinds
 
-        if keys[pygame.K_w]:
+        if keys[kb["move_up"]]:
             self.view_direction = 'back'
-        elif not self.on_ladder and keys[pygame.K_s]:
+        elif not self.on_ladder and keys[kb["move_down"]]:
             self.view_direction = 'front'
 
         # 1. ATTAQUE

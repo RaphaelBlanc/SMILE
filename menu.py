@@ -78,6 +78,52 @@ class Menu:
         self.btn_confirm_code = self._btn(center_x, SCREEN_HEIGHT // 2 + 130, 300, 70)
         self.btn_back_join    = self._btn(center_x, SCREEN_HEIGHT // 2 + 250, 250, 60)
 
+        # ── Slider volume (paramètres) ──────────────────────────────
+        self.volume           = 1.0          # 0.0 → 1.0
+        slider_w              = 500
+        self.slider_rect      = pygame.Rect(center_x - slider_w // 2,
+                                            SCREEN_HEIGHT // 2 + 20,
+                                            slider_w, 12)
+        self.slider_handle_r  = 18           # rayon de la poignée
+        self.slider_dragging  = False
+        self.btn_back_settings = self._btn(center_x, SCREEN_HEIGHT // 2 + 200, 250, 60)
+
+        # ── Onglets paramètres ──────────────────────────────────────
+        # "volume" ou "keybinds"
+        self.settings_tab = "volume"
+        tab_y = 340
+        self.btn_tab_volume   = self._btn(center_x - 160, tab_y, 280, 55)
+        self.btn_tab_keybinds = self._btn(center_x + 160, tab_y, 280, 55)
+
+        # ── Touches configurables ───────────────────────────────────
+        self.keybinds = {
+            "move_left":  pygame.K_q,
+            "move_right": pygame.K_d,
+            "move_up":    pygame.K_z,
+            "move_down":  pygame.K_s,
+            "jump":       pygame.K_SPACE,
+            "sprint":     pygame.K_LSHIFT,
+            "attack":     pygame.K_f,
+            "dash":       pygame.K_v,
+        }
+        # Labels lisibles pour chaque action
+        self.keybind_labels = {
+            "move_left":  "Aller à gauche",
+            "move_right": "Aller à droite",
+            "move_up":    "Monter / Echelle",
+            "move_down":  "Descendre / Front",
+            "jump":       "Sauter",
+            "sprint":     "Sprint",
+            "attack":     "Attaque",
+            "dash":       "Dash",
+        }
+        # Quelle action est en attente d'une nouvelle touche (None = aucune)
+        self.rebinding_action    = None
+        self.keybind_list_y      = 400     # Y de départ de la liste
+        self.keybind_row_h       = 62      # hauteur d'une ligne
+        # Rect de chaque bouton "rebind" (reconstruit à chaque draw)
+        self.keybind_btn_rects   = {}
+
     # ── Helpers ────────────────────────────────────────────────────
 
     @staticmethod
@@ -143,7 +189,77 @@ class Menu:
         # ── Paramètres ──────────────────────────────────────────────
         elif self.state == "settings":
             self.draw_text("PARAMETRES", self.titre_font, WHITE, cx, 250)
-            self.draw_button(self.btn_back, "RETOUR", GREY, WHITE, mouse_pos)
+
+            # ── Onglets ─────────────────────────────────────────────
+            for btn, label, tab in [
+                (self.btn_tab_volume,   "VOLUME",  "volume"),
+                (self.btn_tab_keybinds, "TOUCHES", "keybinds"),
+            ]:
+                active   = (self.settings_tab == tab)
+                bg_color = BLUE_HOVER if active else BLUE_MENU
+                border   = YELLOW if active else WHITE
+                pygame.draw.rect(self.screen, bg_color, btn, border_radius=12)
+                pygame.draw.rect(self.screen, border,   btn, 3, border_radius=12)
+                self.draw_text(label, self.button_font, WHITE, btn.centerx, btn.centery)
+
+            # ── Contenu : Volume ─────────────────────────────────────
+            if self.settings_tab == "volume":
+                self.draw_text("VOLUME", self.button_font, WHITE, cx, SCREEN_HEIGHT // 2 - 60)
+
+                pygame.draw.rect(self.screen, GREY, self.slider_rect, border_radius=6)
+                filled_w    = int(self.slider_rect.width * self.volume)
+                filled_rect = pygame.Rect(self.slider_rect.x, self.slider_rect.y,
+                                          filled_w, self.slider_rect.height)
+                pygame.draw.rect(self.screen, BLUE_MENU, filled_rect, border_radius=6)
+
+                handle_x = self.slider_rect.x + filled_w
+                handle_y = self.slider_rect.centery
+                pygame.draw.circle(self.screen, WHITE,     (handle_x, handle_y), self.slider_handle_r)
+                pygame.draw.circle(self.screen, BLUE_HOVER,(handle_x, handle_y), self.slider_handle_r, 3)
+
+                pct_text = f"{int(self.volume * 100)} %"
+                self.draw_text(pct_text, self.button_font, YELLOW, cx,
+                               self.slider_rect.bottom + 45)
+
+            # ── Contenu : Touches ────────────────────────────────────
+            elif self.settings_tab == "keybinds":
+                actions = list(self.keybinds.keys())
+                self.keybind_btn_rects = {}
+
+                for i, action in enumerate(actions):
+                    row_y    = self.keybind_list_y + i * self.keybind_row_h
+                    label    = self.keybind_labels[action]
+                    key_name = pygame.key.name(self.keybinds[action]).upper()
+
+                    # Fond de ligne alterné
+                    row_rect = pygame.Rect(cx - 480, row_y - 24, 960, self.keybind_row_h - 6)
+                    bg = (30, 30, 60) if i % 2 == 0 else (20, 20, 45)
+                    pygame.draw.rect(self.screen, bg, row_rect, border_radius=8)
+
+                    # Label action (à gauche)
+                    self.draw_text(label, self.small_font, WHITE, cx - 180, row_y)
+
+                    # Bouton touche (à droite)
+                    btn_r = pygame.Rect(0, 0, 220, 44)
+                    btn_r.center = (cx + 280, row_y)
+                    self.keybind_btn_rects[action] = btn_r
+
+                    if self.rebinding_action == action:
+                        pygame.draw.rect(self.screen, YELLOW, btn_r, border_radius=10)
+                        pygame.draw.rect(self.screen, WHITE,  btn_r, 2, border_radius=10)
+                        self.draw_text("APPUIE...", self.small_font, BLACK, btn_r.centerx, btn_r.centery)
+                    else:
+                        col = BLUE_HOVER if btn_r.collidepoint(mouse_pos) else BLUE_MENU
+                        pygame.draw.rect(self.screen, col,   btn_r, border_radius=10)
+                        pygame.draw.rect(self.screen, WHITE, btn_r, 2, border_radius=10)
+                        self.draw_text(key_name, self.small_font, WHITE, btn_r.centerx, btn_r.centery)
+
+                # Hint ESC pour annuler
+                if self.rebinding_action:
+                    self.draw_text("ESC pour annuler", self.small_font, RED, cx,
+                                   self.keybind_list_y + len(actions) * self.keybind_row_h + 10)
+
+            self.draw_button(self.btn_back_settings, "RETOUR", GREY, WHITE, mouse_pos)
 
         # ── Lobby multi : choisir host ou client ────────────────────
         elif self.state == "multi_lobby":
@@ -221,6 +337,34 @@ class Menu:
                 self.input_code += event.unicode.upper()
             return None
 
+        # ── Slider volume : clic + drag ─────────────────────────────
+        if self.state == "settings" and self.settings_tab == "volume":
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                hx = self.slider_rect.x + int(self.slider_rect.width * self.volume)
+                hy = self.slider_rect.centery
+                dist = ((event.pos[0] - hx) ** 2 + (event.pos[1] - hy) ** 2) ** 0.5
+                if dist <= self.slider_handle_r + 4 or self.slider_rect.collidepoint(event.pos):
+                    self.slider_dragging = True
+                    self._update_slider(event.pos[0])
+                    return ("volume_changed", self.volume)
+
+            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                self.slider_dragging = False
+
+            elif event.type == pygame.MOUSEMOTION and self.slider_dragging:
+                self._update_slider(event.pos[0])
+                return ("volume_changed", self.volume)
+
+        # ── Keybinds : capture de touche ────────────────────────────
+        if self.state == "settings" and self.settings_tab == "keybinds":
+            if self.rebinding_action and event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    self.rebinding_action = None
+                else:
+                    self.keybinds[self.rebinding_action] = event.key
+                    self.rebinding_action = None
+                return ("keybinds_changed", self.keybinds)
+
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
 
             # Activer/désactiver la zone de saisie
@@ -241,7 +385,21 @@ class Menu:
 
             # ── settings ────────────────────────────────────────────
             elif self.state == "settings":
-                if self.btn_back.collidepoint(event.pos): self.state = "main"
+                # Changer d'onglet
+                if self.btn_tab_volume.collidepoint(event.pos):
+                    self.settings_tab     = "volume"
+                    self.rebinding_action = None
+                elif self.btn_tab_keybinds.collidepoint(event.pos):
+                    self.settings_tab     = "keybinds"
+                # Bouton rebind dans la liste des touches
+                elif self.settings_tab == "keybinds":
+                    for action, btn_r in self.keybind_btn_rects.items():
+                        if btn_r.collidepoint(event.pos):
+                            self.rebinding_action = action
+                            break
+                if self.btn_back_settings.collidepoint(event.pos):
+                    self.rebinding_action = None
+                    self.state = "main"
 
             # ── multi_lobby ─────────────────────────────────────────
             elif self.state == "multi_lobby":
@@ -275,6 +433,11 @@ class Menu:
                         self.state = "multi_lobby"
 
         return None
+
+    def _update_slider(self, mouse_x):
+        """Recalcule self.volume selon la position X de la souris sur la piste."""
+        relative = mouse_x - self.slider_rect.x
+        self.volume = max(0.0, min(1.0, relative / self.slider_rect.width))
 
     def _try_join(self, network):
         """Valide le code et lance la tentative de connexion."""
