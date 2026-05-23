@@ -1,6 +1,8 @@
 import pygame
 import cv2
 import sys
+import os
+from config import ROOT_DIR
 
 # --- CONFIGURATION ---
 WHITE      = (255, 255, 255)
@@ -34,7 +36,7 @@ class Menu:
 
         # --- LOGO ---
         try:
-            self.smile_image = pygame.image.load("assets/images/swappy-20260318-204350.png").convert_alpha()
+            self.smile_image = pygame.image.load(os.path.join(ROOT_DIR, "assets/images/swappy-20260318-204350.png")).convert_alpha()
             nouvelle_largeur = 500
             ratio = self.smile_image.get_width() / self.smile_image.get_height()
             self.smile_image = pygame.transform.scale(
@@ -44,7 +46,7 @@ class Menu:
             self.smile_image.fill(WHITE)
 
         # --- VIDÉO DE FOND ---
-        self.video_path    = "assets/video/videofondmenu.mp4"
+        self.video_path    = os.path.join(ROOT_DIR, "assets/video/videofondmenu.mp4")
         self.video_capture = cv2.VideoCapture(self.video_path)
         self.video_loaded  = self.video_capture.isOpened()
         self.background_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))

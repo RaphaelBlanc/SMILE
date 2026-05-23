@@ -1,4 +1,6 @@
 import pygame
+import os
+from config import ROOT_DIR
 
 class SoundManager:
     def __init__(self):
@@ -13,13 +15,13 @@ class SoundManager:
         self.music_base_volume = 0.1
         
         # Chargement des effets sonores
-        self.load_sound("jump", "assets/audio/boing.wav", volume=0.2)
-        self.load_sound("dash", "assets/audio/dash.wav", volume=0.3)
-        self.load_sound("fireball", "assets/audio/fireball.wav", volume=0.4)
+        self.load_sound("jump", os.path.join(ROOT_DIR, "assets/audio/boing.wav"), volume=0.2)
+        self.load_sound("dash", os.path.join(ROOT_DIR, "assets/audio/dash.wav"), volume=0.3)
+        self.load_sound("fireball", os.path.join(ROOT_DIR, "assets/audio/fireball.wav"), volume=0.4)
         
         # Chargement de la musique de fond
         try:
-            pygame.mixer.music.load("assets/audio/background_music.mp3")
+            pygame.mixer.music.load(os.path.join(ROOT_DIR, "assets/audio/background_music.mp3"))
             pygame.mixer.music.set_volume(self.music_base_volume * self.global_volume)
             pygame.mixer.music.play(-1) # -1 pour jouer en boucle
         except pygame.error:

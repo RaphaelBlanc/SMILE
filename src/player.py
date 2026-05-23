@@ -1,7 +1,8 @@
 import pygame
 import os
-from capacite import Capacite
 from animator import Animator
+from capacite import Capacite
+from config import ROOT_DIR
 
 #ECRAN#
 SCREEN_WIDTH  = 1920
@@ -367,7 +368,7 @@ class Player(pygame.sprite.Sprite):
             else:
                 self.animations[action] = []
 
-        base_path = 'assets/images/player/'
+        base_path = os.path.join(ROOT_DIR, 'assets/images/player/')
         for state in self.animations.keys():
             full_path = os.path.join(base_path, state)
             if os.path.exists(full_path):

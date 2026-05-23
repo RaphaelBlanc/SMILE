@@ -2,6 +2,7 @@ import pygame
 import math
 import random
 import os
+from config import ROOT_DIR
 
 # ================================================================
 #  MONSTRE.PY  —  Ennemis avec machine à états — SMILE
@@ -122,7 +123,7 @@ class BaseEnemy(pygame.sprite.Sprite):
         Charge assets/images/monstres/<folder_name>/<etat>/frame_XXX.png
         Ne plante pas si les fichiers sont absents.
         """
-        dossier_base = os.path.join("assets", "images", "monstres", folder_name)
+        dossier_base = os.path.join(ROOT_DIR, "assets", "images", "monstres", folder_name)
         for state in states:
             path = os.path.join(dossier_base, state)
             if not os.path.isdir(path):

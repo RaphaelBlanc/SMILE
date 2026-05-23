@@ -26,7 +26,8 @@ class Network:
     def connect(self):
         future = asyncio.run_coroutine_threadsafe(self._connect(), self._loop)
         try:
-            future.result(timeout=5)
+            # On augmente le timeout à 45s car le serveur gratuit Render met du temps à se réveiller
+            future.result(timeout=45)
         except Exception as e:
             self.error = f"Connexion impossible : {e}"
 
