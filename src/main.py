@@ -161,6 +161,7 @@ class Game:
 
         # Screen-shake pour GolemPierre
         self.shake_ref = [0]
+        self.mob_counter = 0
 
         # --- MODE MULTI ---
         self.network       = None          # Network() créé à la demande
@@ -278,6 +279,12 @@ class Game:
                     "p1_y":  self.player.rect.y,
                     "p1_hp": self.player.hp_current,
                 }
+                mobs_state = []
+                for m in self.monster_sprites:
+                    mobs_state.append({"id": getattr(m, 'id', -1), "x": m.rect.x, "y": m.rect.y, "hp": m.hp_current})
+                state["mobs"] = mobs_state
+                state["projs"] = [{"x": p.rect.x, "y": p.rect.y} for p in self.player.capacite.projectiles]
+                state["enemy_projs"] = [{"x": p.rect.x, "y": p.rect.y} for p in self.enemy_proj_sprites]
                 self.network.send_game_state(state)
 
             for msg in self.network.poll():
@@ -286,6 +293,12 @@ class Game:
                         self.remote_player.rect.x     = msg.get("p2_x", self.remote_player.rect.x)
                         self.remote_player.rect.y     = msg.get("p2_y", self.remote_player.rect.y)
                         self.remote_player.hp_current = msg.get("p2_hp", self.remote_player.hp_current)
+                    self.remote_projs = msg.get("projs", [])
+                elif msg.get("action") == "damage_mob":
+                    mob_id = msg.get("mob_id")
+                    mob = next((m for m in self.monster_sprites if getattr(m, 'id', None) == mob_id), None)
+                    if mob:
+                        mob.take_damage(msg.get("amount", 20))
 
         # ── CLIENT : envoie son état (P2), reçoit l'état du host (P1) ──────
         elif self.network.role == "client":
@@ -296,6 +309,7 @@ class Game:
                     "p2_x":  self.player.rect.x,
                     "p2_y":  self.player.rect.y,
                     "p2_hp": self.player.hp_current,
+                    "projs": [{"x": p.rect.x, "y": p.rect.y} for p in self.player.capacite.projectiles]
                 }
                 self.network.send_client_state(state)
 
@@ -307,24 +321,51 @@ class Game:
                         self.remote_player.rect.y     = msg.get("p1_y", self.remote_player.rect.y)
                         self.remote_player.hp_current = msg.get("p1_hp", self.remote_player.hp_current)
 
+                    self.remote_projs = msg.get("projs", [])
+                    self.remote_enemy_projs = msg.get("enemy_projs", [])
+
+                    mobs_state = msg.get("mobs", [])
+                    received_ids = {m["id"] for m in mobs_state}
+                    for m_state in mobs_state:
+                        mob = next((m for m in self.monster_sprites if getattr(m, 'id', None) == m_state["id"]), None)
+                        if mob:
+                            mob.rect.x = m_state["x"]
+                            mob.rect.y = m_state["y"]
+                            mob.hp_current = m_state["hp"]
+                    for m in list(self.monster_sprites):
+                        if getattr(m, 'id', None) not in received_ids:
+                            m.dead = True
+                            m.hp_current = 0
+
     # ── Spawn mobs ────────────────────────────────────────────────
 
     def _spawn_mob(self, obj_type, pos):
         groups    = [self.monster_sprites]
         mob_class = MOB_CLASSES[obj_type]
         if obj_type == "GoblinArcher":
-            mob_class(pos, groups, arrow_groups=[self.enemy_proj_sprites])
+            mob = mob_class(pos, groups, arrow_groups=[self.enemy_proj_sprites])
         elif obj_type == "GolemPierre":
-            mob_class(pos, groups, screen_shake_ref=self.shake_ref)
+            mob = mob_class(pos, groups, screen_shake_ref=self.shake_ref)
         elif obj_type in ("EspritFeu", "EspritGlace", "EspritFoudre", "EspritNature"):
-            mob_class(pos, groups, vfx_groups=[self.vfx_sprites])
+            mob = mob_class(pos, groups, vfx_groups=[self.vfx_sprites])
         else:
-            mob_class(pos, groups)
+            mob = mob_class(pos, groups)
+        mob.id = self.mob_counter
+        self.mob_counter += 1
 
     # ── Update ────────────────────────────────────────────────────
 
     def update(self, dt):
         if not self.is_paused:
+            if self.is_multi and self.network and not self.network.connected:
+                print("Déconnexion détectée, retour au menu...")
+                self.is_multi = False
+                self.game_started = False
+                self.is_paused = True
+                self.menu.state = "main"
+                self.network = None
+                return
+
             # Réseau
             if self.is_multi:
                 self._network_update(dt)
@@ -345,7 +386,11 @@ class Game:
 
             # Monstres
             for m in list(self.monster_sprites):
-                m.update(self.player, self.obstacle_sprites)
+                if not self.is_multi or self.network.role == "host":
+                    m.update(self.player, self.obstacle_sprites)
+                else:
+                    if getattr(m, 'contact_timer', 0) > 0:
+                        m.contact_timer -= 1
 
                 if hasattr(m, 'heal_allies'):
                     m.heal_allies(self.monster_sprites)
@@ -369,8 +414,12 @@ class Game:
             for proj in list(self.player.capacite.projectiles):
                 for m in list(self.monster_sprites):
                     if not m.dead and proj.rect.colliderect(m.rect):
-                        m.take_damage(20)
                         proj.kill()
+                        if not self.is_multi or self.network.role == "host":
+                            m.take_damage(20)
+                        elif self.network.role == "client":
+                            if self.network:
+                                self.network._send({"action": "damage_mob", "mob_id": getattr(m, 'id', -1), "amount": 20})
                         break
 
             # Projectiles ennemis → joueur
@@ -466,6 +515,16 @@ class Game:
 
             for p in self.particles:
                 p.draw(self.screen)
+
+            if self.is_multi:
+                for proj in getattr(self, "remote_projs", []):
+                    r = pygame.Rect(proj["x"], proj["y"], 16, 16)
+                    r = self.camera.apply(r)
+                    pygame.draw.ellipse(self.screen, (255, 150, 0), r)
+                for proj in getattr(self, "remote_enemy_projs", []):
+                    r = pygame.Rect(proj["x"], proj["y"], 16, 16)
+                    r = self.camera.apply(r)
+                    pygame.draw.ellipse(self.screen, (255, 50, 0), r)
 
             self.dialogue_box.draw()
             self.draw_health_bar()

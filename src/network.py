@@ -69,6 +69,11 @@ class Network:
                     # CLIENT : le serveur confirme que le code etait valide
                     self.peer_joined = True
 
+                elif action == "peer_disconnected":
+                    self.peer_joined = False
+                    self.connected = False
+                    self.error = "L'hôte a quitté la partie."
+
                 elif action == "error":
                     self.error = msg.get("msg", "Erreur inconnue")
 
