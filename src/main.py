@@ -269,10 +269,9 @@ class Game:
         if self.network is None:
             return
 
-        # ── HOST : envoie l'état (P1), reçoit l'état du client (P2) ──────
         if self.network.role == "host":
             self.net_timer += dt
-            if self.net_timer >= 1 / 20:          # 20 fois/seconde
+            if self.net_timer >= 1 / 60:          # 60 fois/seconde (fluide)
                 self.net_timer = 0
                 state = {
                     "p1_x":  self.player.rect.x,
@@ -288,6 +287,7 @@ class Game:
                 self.network.send_game_state(state)
 
             for msg in self.network.poll():
+                self.last_msg_time = pygame.time.get_ticks()
                 if msg.get("action") == "input":
                     if self.remote_player:
                         self.remote_player.rect.x     = msg.get("p2_x", self.remote_player.rect.x)
@@ -303,7 +303,7 @@ class Game:
         # ── CLIENT : envoie son état (P2), reçoit l'état du host (P1) ──────
         elif self.network.role == "client":
             self.net_timer += dt
-            if self.net_timer >= 1 / 20:
+            if self.net_timer >= 1 / 60:
                 self.net_timer = 0
                 state = {
                     "p2_x":  self.player.rect.x,
@@ -314,6 +314,7 @@ class Game:
                 self.network.send_client_state(state)
 
             for msg in self.network.poll():
+                self.last_msg_time = pygame.time.get_ticks()
                 if msg.get("action") == "game_state":
                     # Le joueur distant pour le client = p1 dans l'état host
                     if self.remote_player:
@@ -357,14 +358,24 @@ class Game:
 
     def update(self, dt):
         if not self.is_paused:
-            if self.is_multi and self.network and not self.network.connected:
-                print("Déconnexion détectée, retour au menu...")
-                self.is_multi = False
-                self.game_started = False
-                self.is_paused = True
-                self.menu.state = "main"
-                self.network = None
-                return
+            if self.is_multi and self.network:
+                # Initialise le timer de message si pas encore fait
+                if getattr(self, 'last_msg_time', 0) == 0:
+                    self.last_msg_time = pygame.time.get_ticks()
+                
+                # Déconnexion par timeout (3 secondes sans message)
+                if pygame.time.get_ticks() - self.last_msg_time > 3000:
+                    self.network.connected = False
+
+                if not self.network.connected:
+                    print("Déconnexion détectée, retour au menu...")
+                    self.is_multi = False
+                    self.game_started = False
+                    self.is_paused = True
+                    self.menu.state = "main"
+                    self.network = None
+                    self.last_msg_time = 0
+                    return
 
             # Réseau
             if self.is_multi:
