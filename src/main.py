@@ -271,7 +271,7 @@ class Game:
 
         if self.network.role == "host":
             self.net_timer += dt
-            if self.net_timer >= 1 / 60:          # 60 fois/seconde (fluide)
+            if self.net_timer >= 1 / 120:          # 120 fois/seconde (très fluide)
                 self.net_timer = 0
                 state = {
                     "p1_x":  self.player.rect.x,
@@ -303,7 +303,7 @@ class Game:
         # ── CLIENT : envoie son état (P2), reçoit l'état du host (P1) ──────
         elif self.network.role == "client":
             self.net_timer += dt
-            if self.net_timer >= 1 / 60:
+            if self.net_timer >= 1 / 120:
                 self.net_timer = 0
                 state = {
                     "p2_x":  self.player.rect.x,
