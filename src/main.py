@@ -268,7 +268,7 @@ class Game:
         if self.network is None:
             return
 
-        # ── HOST : envoie l'état, reçoit les inputs du client ──────
+        # ── HOST : envoie l'état (P1), reçoit l'état du client (P2) ──────
         if self.network.role == "host":
             self.net_timer += dt
             if self.net_timer >= 1 / 20:          # 20 fois/seconde
@@ -278,48 +278,34 @@ class Game:
                     "p1_y":  self.player.rect.y,
                     "p1_hp": self.player.hp_current,
                 }
-                if self.remote_player:
-                    state["p2_x"]  = self.remote_player.rect.x
-                    state["p2_y"]  = self.remote_player.rect.y
-                    state["p2_hp"] = self.remote_player.hp_current
                 self.network.send_game_state(state)
 
             for msg in self.network.poll():
-                if msg.get("action") == "input":
-                    self._apply_client_inputs(msg.get("keys", []))
+                if msg.get("action") == "client_state":
+                    if self.remote_player:
+                        self.remote_player.rect.x     = msg.get("p2_x", self.remote_player.rect.x)
+                        self.remote_player.rect.y     = msg.get("p2_y", self.remote_player.rect.y)
+                        self.remote_player.hp_current = msg.get("p2_hp", self.remote_player.hp_current)
 
-        # ── CLIENT : envoie les inputs, reçoit l'état du host ──────
+        # ── CLIENT : envoie son état (P2), reçoit l'état du host (P1) ──────
         elif self.network.role == "client":
-            keys = pygame.key.get_pressed()
-            pressed = [k for k in [
-                pygame.K_LEFT, pygame.K_RIGHT, pygame.K_a, pygame.K_d,
-                pygame.K_SPACE, pygame.K_LSHIFT, pygame.K_f, pygame.K_v,
-                pygame.K_z, pygame.K_s, pygame.K_UP, pygame.K_DOWN,
-            ] if keys[k]]
-            self.network.send_input(pressed)
+            self.net_timer += dt
+            if self.net_timer >= 1 / 20:
+                self.net_timer = 0
+                state = {
+                    "p2_x":  self.player.rect.x,
+                    "p2_y":  self.player.rect.y,
+                    "p2_hp": self.player.hp_current,
+                }
+                self.network.send_client_state(state)
 
             for msg in self.network.poll():
                 if msg.get("action") == "game_state":
-                    # Le joueur local du client = p2 dans l'état host
-                    self.player.rect.x        = msg.get("p2_x", self.player.rect.x)
-                    self.player.rect.y        = msg.get("p2_y", self.player.rect.y)
-                    self.player.hp_current    = msg.get("p2_hp", self.player.hp_current)
+                    # Le joueur distant pour le client = p1 dans l'état host
                     if self.remote_player:
                         self.remote_player.rect.x     = msg.get("p1_x", self.remote_player.rect.x)
                         self.remote_player.rect.y     = msg.get("p1_y", self.remote_player.rect.y)
                         self.remote_player.hp_current = msg.get("p1_hp", self.remote_player.hp_current)
-
-    def _apply_client_inputs(self, keys: list):
-        """Le host applique les touches reçues du client sur remote_player.
-        (Implémentation simplifiée — déplace le sprite distant en fonction des touches.)"""
-        if self.remote_player is None:
-            return
-        speed = 6
-        if pygame.K_RIGHT in keys or pygame.K_d in keys:
-            self.remote_player.rect.x += speed
-        if pygame.K_LEFT  in keys or pygame.K_a in keys:
-            self.remote_player.rect.x -= speed
-        # Pour un vrai jeu, il faudrait appliquer la physique complète ici.
 
     # ── Spawn mobs ────────────────────────────────────────────────
 

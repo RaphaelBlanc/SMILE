@@ -24,12 +24,23 @@ class Network:
         self._loop.run_forever()
 
     def connect(self):
-        future = asyncio.run_coroutine_threadsafe(self._connect(), self._loop)
-        try:
-            # On augmente le timeout à 45s car le serveur gratuit Render met du temps à se réveiller
-            future.result(timeout=45)
-        except Exception as e:
-            self.error = f"Connexion impossible : {e}"
+        # On lance la connexion en arrière-plan sans bloquer Pygame
+        asyncio.run_coroutine_threadsafe(self._connect(), self._loop)
+
+    async def _wait_and_send(self, data: dict):
+        # Attend jusqu'à 45 secondes (450 * 0.1s)
+        timeout = 450
+        while not self.connected and timeout > 0:
+            if self.error:
+                return
+            await asyncio.sleep(0.1)
+            timeout -= 1
+        
+        if self.connected and self.ws:
+            await self.ws.send(json.dumps(data))
+        else:
+            if not self.error:
+                self.error = "Timeout : Impossible de joindre le serveur."
 
     async def _connect(self):
         try:
@@ -70,17 +81,17 @@ class Network:
 
     def create_session(self):
         self.role = "host"
-        self._send({"action": "create"})
+        asyncio.run_coroutine_threadsafe(self._wait_and_send({"action": "create"}), self._loop)
 
     def join_session(self, code: str):
         self.role = "client"
-        self._send({"action": "join", "code": code.strip().upper()})
+        asyncio.run_coroutine_threadsafe(self._wait_and_send({"action": "join", "code": code.strip().upper()}), self._loop)
 
     def send_game_state(self, state: dict):
         self._send({"action": "game_state", **state})
 
-    def send_input(self, keys: list):
-        self._send({"action": "input", "keys": keys})
+    def send_client_state(self, state: dict):
+        self._send({"action": "client_state", **state})
 
     def poll(self) -> list:
         msgs, self.incoming = self.incoming[:], []
