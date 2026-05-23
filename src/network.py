@@ -91,7 +91,7 @@ class Network:
         self._send({"action": "game_state", **state})
 
     def send_client_state(self, state: dict):
-        self._send({"action": "client_state", **state})
+        self._send({"action": "input", **state})
 
     def poll(self) -> list:
         msgs, self.incoming = self.incoming[:], []

@@ -281,7 +281,7 @@ class Game:
                 self.network.send_game_state(state)
 
             for msg in self.network.poll():
-                if msg.get("action") == "client_state":
+                if msg.get("action") == "input":
                     if self.remote_player:
                         self.remote_player.rect.x     = msg.get("p2_x", self.remote_player.rect.x)
                         self.remote_player.rect.y     = msg.get("p2_y", self.remote_player.rect.y)
