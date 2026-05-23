@@ -14,16 +14,18 @@ class Projectile(pygame.sprite.Sprite):
         self.rect = self.image.get_rect(center=pos)
         self.speed = 15
         self.direction = direction 
+        self.life = 0
 
     def update(self, obstacles):
         # Mouvement simple
         self.rect.x += self.speed * self.direction
         
-        # Destruction si collision ou sortie d'écran
+        # Destruction si collision ou fin de vie
         if pygame.sprite.spritecollide(self, obstacles, False):
             self.kill()
         
-        if self.rect.right < 0 or self.rect.left > SCREEN_WIDTH:
+        self.life += 1
+        if self.life > 100:  # Environ 1.6 secondes de durée de vol (à 60 FPS)
             self.kill()
 
 #CLASS CAPACITE ###########################################################
