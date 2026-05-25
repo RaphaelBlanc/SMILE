@@ -88,7 +88,10 @@ class Menu:
                                             slider_w, 12)
         self.slider_handle_r  = 18           # rayon de la poignée
         self.slider_dragging  = False
-        self.btn_back_settings = self._btn(center_x, SCREEN_HEIGHT // 2 + 200, 250, 60)
+        self.btn_back_settings         = self._btn(center_x, SCREEN_HEIGHT // 2 + 200, 250, 60)
+        # Bouton retour spécifique à l'onglet keybinds (en bas de la liste des touches)
+        keybinds_back_y = self.keybind_list_y if hasattr(self, 'keybind_list_y') else 400
+        self.btn_back_settings_keybinds = self._btn(center_x, 970, 250, 60)
 
         # ── Onglets paramètres ──────────────────────────────────────
         # "volume" ou "keybinds"
@@ -261,7 +264,8 @@ class Menu:
                     self.draw_text("ESC pour annuler", self.small_font, RED, cx,
                                    self.keybind_list_y + len(actions) * self.keybind_row_h + 10)
 
-            self.draw_button(self.btn_back_settings, "RETOUR", GREY, WHITE, mouse_pos)
+            btn_back = self.btn_back_settings_keybinds if self.settings_tab == "keybinds" else self.btn_back_settings
+            self.draw_button(btn_back, "RETOUR", GREY, WHITE, mouse_pos)
 
         # ── Lobby multi : choisir host ou client ────────────────────
         elif self.state == "multi_lobby":
@@ -399,7 +403,7 @@ class Menu:
                         if btn_r.collidepoint(event.pos):
                             self.rebinding_action = action
                             break
-                if self.btn_back_settings.collidepoint(event.pos):
+                if self.btn_back_settings.collidepoint(event.pos) or self.btn_back_settings_keybinds.collidepoint(event.pos):
                     self.rebinding_action = None
                     self.state = "main"
 

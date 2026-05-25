@@ -163,6 +163,16 @@ class Game:
         self.shake_ref = [0]
         self.mob_counter = 0
 
+        # --- GAME OVER ---
+        cx = SCREEN_WIDTH // 2
+        cy = SCREEN_HEIGHT // 2
+        self.btn_respawn = pygame.Rect(0, 0, 320, 75)
+        self.btn_respawn.center = (cx - 200, cy + 80)
+        self.btn_gameover_menu = pygame.Rect(0, 0, 320, 75)
+        self.btn_gameover_menu.center = (cx + 200, cy + 80)
+        self.respawn_point = (200, 200)   # mis à jour au spawn / checkpoint
+        self.menu_input_blocked = 0       # frames où le menu ignore les clics
+
         # --- MODE MULTI ---
         self.network       = None          # Network() créé à la demande
         self.is_multi      = False         # True si partie réseau
@@ -238,6 +248,7 @@ class Game:
         # Joueur local
         self.player = Player(player_spawn, self.sound_manager, self.menu.keybinds)
         self.visibles_sprites.add(self.player)
+        self.respawn_point = player_spawn   # point de départ = premier respawn
 
     # ── Gestion réseau ────────────────────────────────────────────
 
@@ -354,9 +365,30 @@ class Game:
         mob.id = self.mob_counter
         self.mob_counter += 1
 
+    # ── Respawn / Game Over ───────────────────────────────────────
+
+    def _respawn(self):
+        """Réinitialise le joueur au dernier point de respawn."""
+        self.player.rect.topleft = self.respawn_point
+        self.player.hp_current   = self.player.hp_max
+        self.player.vel_y        = 0
+        # Vider les projectiles ennemis pour ne pas mourir immédiatement
+        for ep in list(self.enemy_proj_sprites):
+            ep.kill()
+
+    def _go_to_main_menu(self):
+        """Retourne au menu principal sans réinitialiser la partie."""
+        self._respawn()          # remet le joueur en vie pour éviter un état incohérent
+        self.is_paused    = True
+        self.game_started = False
+        self.menu.state   = "main"
+        self.menu_input_blocked = 10   # ignore les clics pendant 10 frames
+
     # ── Update ────────────────────────────────────────────────────
 
     def update(self, dt):
+        if self.menu_input_blocked > 0:
+            self.menu_input_blocked -= 1
         if not self.is_paused:
             if self.is_multi and self.network:
                 # Initialise le timer de message si pas encore fait
@@ -550,11 +582,30 @@ class Game:
 
             if self.player.hp_current <= 0:
                 overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-                overlay.fill((0, 0, 0, 140))
+                overlay.fill((0, 0, 0, 180))
                 self.screen.blit(overlay, (0, 0))
+
+                # Titre GAME OVER
                 txt = self.font_title.render("GAME OVER", True, RED)
                 self.screen.blit(txt, (SCREEN_WIDTH // 2 - txt.get_width() // 2,
-                                       SCREEN_HEIGHT // 2 - txt.get_height() // 2))
+                                       SCREEN_HEIGHT // 2 - 80))
+
+                mouse_pos = pygame.mouse.get_pos()
+                btn_font  = pygame.font.SysFont("consolas", 28, bold=True)
+
+                # Bouton RÉAPPARAITRE
+                color_r = (0, 160, 60) if self.btn_respawn.collidepoint(mouse_pos) else (0, 110, 40)
+                pygame.draw.rect(self.screen, color_r, self.btn_respawn, border_radius=14)
+                pygame.draw.rect(self.screen, WHITE,   self.btn_respawn, 3, border_radius=14)
+                lbl_r = btn_font.render("REAPPARAITRE", True, WHITE)
+                self.screen.blit(lbl_r, lbl_r.get_rect(center=self.btn_respawn.center))
+
+                # Bouton MENU
+                color_m = (0, 120, 210) if self.btn_gameover_menu.collidepoint(mouse_pos) else (0, 80, 160)
+                pygame.draw.rect(self.screen, color_m, self.btn_gameover_menu, border_radius=14)
+                pygame.draw.rect(self.screen, WHITE,   self.btn_gameover_menu, 3, border_radius=14)
+                lbl_m = btn_font.render("MENU", True, WHITE)
+                self.screen.blit(lbl_m, lbl_m.get_rect(center=self.btn_gameover_menu.center))
 
         pygame.display.flip()
 
@@ -574,7 +625,17 @@ class Game:
                         self.is_paused = not self.is_paused
                         self.menu.state = "main"
 
-                if self.is_paused:
+                # ── Boutons Game Over ───────────────────────────────
+                if (not self.is_paused
+                        and self.player.hp_current <= 0
+                        and event.type == pygame.MOUSEBUTTONDOWN
+                        and event.button == 1):
+                    if self.btn_respawn.collidepoint(event.pos):
+                        self._respawn()
+                    elif self.btn_gameover_menu.collidepoint(event.pos):
+                        self._go_to_main_menu()
+
+                if self.is_paused and self.menu_input_blocked == 0:
                     action = self.menu.handle_input(event, self.network)
 
                     # Slider volume — action est un tuple ("volume_changed", valeur)
