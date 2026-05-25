@@ -798,8 +798,11 @@ class Game:
                         self._start_multi_as_client(code)
 
                     elif action == "quit":
-                        pygame.quit()
-                        sys.exit()
+                        if self.game_started:
+                            self._go_to_main_menu()
+                        else:
+                            pygame.quit()
+                            sys.exit()
 
             # ── Vérification état réseau (en dehors des events) ─────
             if self.network is not None and self.is_paused:
