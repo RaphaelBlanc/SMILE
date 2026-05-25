@@ -20,15 +20,24 @@ class SoundManager:
         self.load_sound("jump",     os.path.join(ROOT_DIR, "assets/audio/boing.wav"),    volume=0.2)
         self.load_sound("dash",     os.path.join(ROOT_DIR, "assets/audio/dash.wav"),     volume=0.3)
         self.load_sound("fireball", os.path.join(ROOT_DIR, "assets/audio/fireball.wav"), volume=0.4)
-        
-        # Chargement de la musique de fond (sans la jouer tout de suite)
+        # Chemins des musiques de fond
+
+        self.music_intro_path = os.path.join(ROOT_DIR, "assets/audio/smile_fire_intro.mp3")
+        self.music_boucle_path = os.path.join(ROOT_DIR, "assets/audio/smile_fire_boucle.mp3")
+
+        # Chargement et lecture de l'intro
+
         try:
-            pygame.mixer.music.load(self._music_path)
+            pygame.mixer.music.load(self.music_intro_path)
+            pygame.mixer.music.queue(self.music_boucle_path, loops=-1)
             pygame.mixer.music.set_volume(self.music_base_volume * self.global_volume)
             # NE PAS appeler play() ici — c'est start_music() qui s'en charge
-        except pygame.error:
-            print("Musique de fond introuvable.")
+            self.music_intro_done = False
+        except pygame.error as e:
+            print(f"Erreur musique : {e}")
 
+    def update(self):
+        pass
     def start_music(self):
         """Démarre la musique de fond en boucle.
         À appeler APRÈS la vidéo d'intro."""
@@ -71,5 +80,4 @@ class SoundManager:
         # Mise à jour de tous les bruitages en respectant leur mixage d'origine
         for name, sound_data in self.sounds.items():
             if sound_data and sound_data["sound"]:
-                nouveau_volume = sound_data["base_volume"] * self.global_volume
-                sound_data["sound"].set_volume(nouveau_volume)
+                sound_data["sound"].set_volume(sound_data["base_volume"] * self.global_volume)
