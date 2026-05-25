@@ -299,6 +299,8 @@ class ChienEnrage(BaseEnemy):
         if self.state in (self.ST_WANDER, self.ST_RETURN):
             if dist < self.DETECT_RANGE:
                 self.state = self.ST_CHASE
+                if getattr(self, 'sound_manager', None):
+                    self.sound_manager.play("chien_detect")
 
         elif self.state == self.ST_CHASE:
             if self._player_jumping_over(player):
@@ -316,6 +318,8 @@ class ChienEnrage(BaseEnemy):
                 if self.contact_timer == 0:
                     player.take_damage(self.ATTACK_DAMAGE)
                     self.contact_timer = self.CONTACT_COOLDOWN
+                    if getattr(self, 'sound_manager', None):
+                        self.sound_manager.play("chien_attack")
                 self.attack_timer = self.ATTACK_CD
                 self.state = self.ST_CHASE
             return
@@ -364,6 +368,8 @@ class ChienEnrage(BaseEnemy):
         self._anim_frame = 0
         self._anim_accum = 0.0
         self.image, _ = self._get_anim_frame("dead", loop=False)
+        if getattr(self, 'sound_manager', None):
+            self.sound_manager.play("chien_death")
         self.kill()
 
     def _do_chase(self, player, obstacles):

@@ -478,6 +478,7 @@ class Game:
             mob = mob_class(pos, groups, vfx_groups=[self.vfx_sprites])
         else:
             mob = mob_class(pos, groups)
+        mob.sound_manager = getattr(self, 'sound_manager', None)
         mob.id = self.mob_counter
         self.mob_counter += 1
 

@@ -115,10 +115,12 @@ class Capacite:
         keys         = pygame.key.get_pressed()
 
         if keys[dash_key] and (current_time - self.last_dash_time > 1000):
+            if hasattr(self.player, 'sound_manager'):
+                self.player.sound_manager.play("dash")
             direction_finale = 1 if self.player.facing_right else -1
 
             for _ in range(10):
-                self.player.rect.x += int(direction_finale * 12)
+                self.player.hitbox.x += int(direction_finale * 12)
                 self.player.check_collision('horizontal', obstacles)
 
             self.player.direction.y = 0
@@ -130,6 +132,8 @@ class Capacite:
 
         # Vérifie si le cooldown (500ms) est passé
         if keys[attack_key] and (current_time - self.last_fire_time > self.fire_cooldown):
+            if hasattr(self.player, 'sound_manager'):
+                self.player.sound_manager.play("fireball")
             direction      = 1 if self.player.facing_right else -1
             
             # On décale l'apparition : 40 pixels en avant, et 20 pixels plus haut
