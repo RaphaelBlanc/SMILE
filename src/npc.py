@@ -47,17 +47,21 @@ class DialogueBox:
             self.screen.blit(text_surf, text_rect)
 
 class NPC(pygame.sprite.Sprite):
-    def __init__(self, pos, message, groups):
+    def __init__(self, pos, message, groups, on_end_callback=None):
         super().__init__(groups)
         self.image = pygame.Surface((32, 64))
         self.image.fill((0, 0, 255)) # Bleu pour le PNJ
         self.rect = self.image.get_rect(topleft=pos)
         
-        self.messages = message.split('|') if message else ["..."]
-        self.msg_index = 0
+        self.set_message(message)
         self.detection_radius = 150
         self.player_in_range = False
         self.is_interacting = False
+        self.on_end_callback = on_end_callback
+
+    def set_message(self, message):
+        self.messages = message.split('|') if message else ["..."]
+        self.msg_index = 0
 
     def update(self, player_rect, dialogue_box):
         npc_center = pygame.math.Vector2(self.rect.center)
@@ -68,7 +72,7 @@ class NPC(pygame.sprite.Sprite):
             self.player_in_range = True
             if self.is_interacting:
                 current_text = self.messages[self.msg_index]
-                if len(self.messages) > 1:
+                if len(self.messages) > 1 and self.msg_index < len(self.messages) - 1:
                     current_text += " [E pour suite]"
                 dialogue_box.show(current_text, owner=self)
             else:
@@ -90,3 +94,5 @@ class NPC(pygame.sprite.Sprite):
                 if self.msg_index >= len(self.messages):
                     self.is_interacting = False
                     self.msg_index = 0
+                    if self.on_end_callback:
+                        self.on_end_callback()

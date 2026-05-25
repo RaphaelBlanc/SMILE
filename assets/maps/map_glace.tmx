@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.10" tiledversion="1.12.1" orientation="orthogonal" renderorder="right-down" width="172" height="94" tilewidth="32" tileheight="32" infinite="0" nextlayerid="6" nextobjectid="38">
+<map version="1.10" tiledversion="1.12.1" orientation="orthogonal" renderorder="right-down" width="172" height="94" tilewidth="32" tileheight="32" infinite="0" nextlayerid="6" nextobjectid="40">
  <tileset firstgid="1" source="tiles_jeu.tsx"/>
  <imagelayer id="2" name="Background">
   <image source="../images/map_glace.png" width="5504" height="3008"/>
@@ -149,6 +149,9 @@
    <point/>
   </object>
   <object id="34" type="GoblinArcher" x="3754" y="1876">
+   <point/>
+  </object>
+  <object id="39" type="Spawn_from_boss" x="3382" y="2569">
    <point/>
   </object>
  </objectgroup>

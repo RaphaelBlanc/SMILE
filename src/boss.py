@@ -418,6 +418,12 @@ class BossBase(pygame.sprite.Sprite):
             self.global_cd -= dt_ms
             self.facing_right = player_rect.centerx > self.rect.centerx
             if self.global_cd <= 0: self._choose_attack()
+            else:
+                dist = player_rect.centerx - self.rect.centerx
+                if abs(dist) > 150:
+                    self.vx = 1.2 if dist > 0 else -1.2
+                else:
+                    self.vx = 0
 
         elif self.attack_state == WINDUP:
             self.vx = 0
@@ -462,6 +468,8 @@ class BossBase(pygame.sprite.Sprite):
     # ── Draw commun ───────────────────────────────────────────────────────────
     def draw(self, screen, ox=0, oy=0):
         for sw in self.shockwaves: sw.draw_self(screen, ox, oy)
+        for h in self.hazards: screen.blit(h.image, (h.rect.x+ox, h.rect.y+oy))
+        for p in self.projectiles: screen.blit(p.image, (p.rect.x+ox, p.rect.y+oy))
         if hasattr(self, '_draw_extras'): self._draw_extras(screen, ox, oy)
         self._draw_particles(screen, ox, oy)
         screen.blit(self.image, (self.rect.x+ox, self.rect.y+oy))
@@ -855,7 +863,7 @@ class Glacius(BossBase):
         if n=="ice_shard":
             self._shard_dir=1 if pr.centerx>self.rect.centerx else -1
         elif n=="teleport_strike":
-            self._tele_target_x=pr.rect.left-self.WIDTH-10
+            self._tele_target_x=pr.left-self.WIDTH-10
         elif n=="blizzard_spin":
             self._spin_dur=3000
 

@@ -12,6 +12,7 @@ from menu import Menu
 from npc import NPC
 from npc import DialogueBox
 from network import Network
+from boss import Glacius
 from monstre import (
     ChienEnrage, GoblinMelee, GoblinArcher,
     EspritFeu, EspritGlace, EspritFoudre, EspritNature,
@@ -300,6 +301,17 @@ class Game:
         self.doors = []
         self.spawn_boss = None
         self.killed_by_boss = False
+        self.current_map_name = ""
+        self.killed_mobs = set()
+        self.boss_death_pos = None
+        
+        # --- ETATS DE QUETE ---
+        self.boss_glace_dead = False
+        self.coming_from_boss = False
+        self.coming_from_teleport = False
+        self.spawn_from_boss_point = None
+        self.spawn_porte_glace_point = None
+        self.pnj_boss_pos = None
 
         # Joueur local initial (sera repositionné par load_map)
         self.player = Player((200, 200), self.sound_manager, self.menu.keybinds)
@@ -311,6 +323,19 @@ class Game:
 
     def load_map(self, map_file):
         print(f"Chargement de la map : {map_file}")
+        
+        # Detect zone change
+        is_same_zone = True
+        if self.current_map_name:
+            if "glace" in self.current_map_name and "glace" not in map_file:
+                is_same_zone = False
+            elif "glace" not in self.current_map_name and "glace" in map_file:
+                is_same_zone = False
+                
+        if not is_same_zone:
+            self.killed_mobs.clear()
+            
+        self.current_map_name = map_file
         
         for s in self.visibles_sprites:
             if s != self.player and getattr(self, 'remote_player', None) != s:
@@ -368,20 +393,53 @@ class Game:
 
                 obj_type_lower = obj_type.lower() if obj_type else ''
 
-                if obj_type_lower == 'spawnjoueur':
+                if obj_type_lower in ('spawnjoueur', 'spawn_joueur_boss'):
                     player_spawn = pos
                 elif obj_type_lower == 'spawnjoueurboss':
                     self.spawn_boss = pos
-                elif obj_type_lower in ('npc', 'pnjporteglace', 'pnjboss'):
+                elif obj_type_lower == 'spawn_from_boss':
+                    self.spawn_from_boss_point = pos
+                elif obj_type_lower in ('pnj_boss', 'pnjboss'):
+                    if "map_boss_glace" in map_file:
+                        self.pnj_boss_pos = pos
+                        if self.boss_glace_dead:
+                            npc_pos = getattr(self, 'boss_death_pos', None) or pos
+                            msg = "Bravo, tu as vaincu le boss !|Je te téléporte à la porte suivante."
+                            npc = NPC(npc_pos, msg, [self.visibles_sprites, self.npc_sprites], on_end_callback=self.teleport_from_boss)
+                    else:
+                        if not self.boss_glace_dead:
+                            msg = "Attention au boss de glace !"
+                            NPC(pos, msg, [self.visibles_sprites, self.npc_sprites])
+                elif obj_type_lower == 'pnjporteglace':
+                    self.spawn_porte_glace_point = pos
+                    if self.boss_glace_dead:
+                        msg = "Le boss est mort !|La porte est maintenant ouverte."
+                    else:
+                        msg = "La porte est fermée...|Il faut d'abord vaincre le boss de glace."
+                    NPC(pos, msg, [self.visibles_sprites, self.npc_sprites])
+                elif obj_type_lower == 'npc':
                     msg = obj.properties.get('message', 'Bonjour !')
                     NPC(pos, msg, [self.visibles_sprites, self.npc_sprites])
-                elif obj_type_lower in ('portetolave', 'portebossglace', 'porteglace'):
+                elif obj_type_lower in ('portetolave', 'portebossglace', 'porteglace', 'porte_to_glace'):
                     dest = 'assets/maps/map1.tmx' if obj_type_lower == 'portetolave' else \
                            'assets/maps/map_boss_glace.tmx' if obj_type_lower == 'portebossglace' else \
+                           'assets/maps/map_glace.tmx' if obj_type_lower == 'porte_to_glace' else \
                            'assets/maps/map_finale.tmx'
-                    self.doors.append({'rect': rect, 'dest': dest})
+                    
+                    if obj_type_lower == 'porte_to_glace' and player_spawn == (200, 200):
+                        player_spawn = pos
+                    
+                    self.doors.append({'rect': rect, 'dest': dest, 'type': obj_type_lower})
+                elif obj_type == 'BossGlace':
+                    if not self.boss_glace_dead:
+                        floor_y = pos[1] + getattr(obj, 'height', 32)
+                        boss = Glacius(pos, self.obstacle_sprites, floor_y)
+                        self.monster_sprites.add(boss)
                 elif obj_type in MOB_CLASSES:
-                    self._spawn_mob(obj_type, pos)
+                    if (self.current_map_name, pos) not in self.killed_mobs:
+                        mob = self._spawn_mob(obj_type, pos)
+                        if mob:
+                            mob.spawn_pos = pos
         except ValueError:
             print("INFO : Calque 'Objets' introuvable — monstres non charges depuis Tiled.")
 
@@ -392,11 +450,24 @@ class Game:
         if self.killed_by_boss and self.spawn_boss:
             self.player.set_position(self.spawn_boss)
             self.respawn_point = self.spawn_boss
+        elif self.coming_from_boss and self.spawn_from_boss_point:
+            self.player.set_position(self.spawn_from_boss_point)
+            self.respawn_point = self.spawn_from_boss_point
+        elif self.coming_from_teleport and self.spawn_porte_glace_point:
+            tp_pos = (self.spawn_porte_glace_point[0] - 50, self.spawn_porte_glace_point[1])
+            self.player.set_position(tp_pos)
+            self.respawn_point = tp_pos
         else:
             self.player.set_position(player_spawn)
             self.respawn_point = player_spawn
             
         self.killed_by_boss = False
+        self.coming_from_boss = False
+        self.coming_from_teleport = False
+
+    def teleport_from_boss(self):
+        self.coming_from_teleport = True
+        self.load_map('assets/maps/map_glace.tmx')
 
     def fade_in(self, duration_ms=600):
         """Fondu depuis le noir vers le contenu actuel."""
@@ -527,6 +598,7 @@ class Game:
         mob.sound_manager = getattr(self, 'sound_manager', None)
         mob.id = self.mob_counter
         self.mob_counter += 1
+        return mob
 
     # ── Respawn / Game Over ───────────────────────────────────────
 
@@ -536,6 +608,7 @@ class Game:
         self.player.set_position(self.respawn_point)
         self.player.hp_current   = self.player.hp_max
         self.player.vel_y        = 0
+        self.killed_mobs.clear()
         # Vider les projectiles ennemis pour ne pas mourir immédiatement
         for ep in list(self.enemy_proj_sprites):
             ep.kill()
@@ -604,7 +677,10 @@ class Game:
             # Monstres
             for m in list(self.monster_sprites):
                 if not self.is_multi or self.network.role == "host":
-                    m.update(self.player, self.obstacle_sprites)
+                    if hasattr(m, 'attack_state'):
+                        m.update(self.player.rect, dt)
+                    else:
+                        m.update(self.player, self.obstacle_sprites)
                 else:
                     if getattr(m, 'contact_timer', 0) > 0:
                         m.contact_timer -= 1
@@ -613,12 +689,34 @@ class Game:
                     m.heal_allies(self.monster_sprites)
 
                 if m.rect.colliderect(self.player.hitbox) and self.player.hp_current > 0:
-                    if m.contact_timer <= 0:
+                    if getattr(m, 'contact_timer', 0) <= 0:
                         self.player.take_damage(getattr(m, 'ATTACK_DAMAGE', 10))
-                        m.contact_timer = m.CONTACT_COOLDOWN
-                        self.killed_by_boss = ('Boss' in type(m).__name__)
+                        m.contact_timer = getattr(m, 'CONTACT_COOLDOWN', 60)
+                        if self.player.hp_current <= 0:
+                            self.killed_by_boss = ('Boss' in type(m).__name__ or hasattr(m, 'attack_state'))
 
-                if m.dead:
+                if hasattr(m, 'attack_state'):
+                    # Collision pour les projectiles et ondes de choc internes du boss
+                    for p in m.projectiles:
+                        if p.rect.colliderect(self.player.hitbox) and self.player.hp_current > 0:
+                            self.player.take_damage(15)
+                            p.kill()
+                            if self.player.hp_current <= 0:
+                                self.killed_by_boss = True
+                    for sw in m.shockwaves:
+                        if sw.rect.colliderect(self.player.hitbox) and self.player.hp_current > 0:
+                            if getattr(sw, 'hit_player', False) == False:
+                                self.player.take_damage(20)
+                                sw.hit_player = True
+                                if self.player.hp_current <= 0:
+                                    self.killed_by_boss = True
+                    for h in m.hazards:
+                        if h.rect.colliderect(self.player.hitbox) and self.player.hp_current > 0:
+                            self.player.take_damage(1) # dégâts continus légers
+                            if self.player.hp_current <= 0:
+                                self.killed_by_boss = True
+
+                if getattr(m, 'dead', False) or (hasattr(m, 'alive') and not m.alive):
                     mob_type = type(m).__name__
                     self.score      += MOB_XP.get(mob_type, 10)
                     self.kill_count += 1
@@ -626,12 +724,23 @@ class Game:
                     for _ in range(16):
                         self.particles.append(
                             Particle(m.rect.centerx, m.rect.centery, color))
+                    
+                    if hasattr(m, 'attack_state') and mob_type == 'Glacius':
+                        self.boss_glace_dead = True
+                        self.boss_death_pos = (m.rect.centerx, m.rect.bottom - 64)
+                        msg = "Bravo, tu as vaincu le boss !|Je te téléporte à la porte suivante."
+                        npc = NPC(self.boss_death_pos, msg, [self.visibles_sprites, self.npc_sprites], on_end_callback=self.teleport_from_boss)
+                    else:
+                        if hasattr(m, 'spawn_pos'):
+                            self.killed_mobs.add((self.current_map_name, m.spawn_pos))
+                            
                     m.kill()
 
             # Projectiles joueur → monstres
             for proj in list(self.player.capacite.projectiles):
                 for m in list(self.monster_sprites):
-                    if not m.dead and proj.rect.colliderect(m.rect):
+                    is_dead = getattr(m, 'dead', False) or not getattr(m, 'alive', True)
+                    if not is_dead and proj.rect.colliderect(m.rect):
                         proj.kill()
                         if not self.is_multi or self.network.role == "host":
                             m.take_damage(20)
@@ -719,15 +828,19 @@ class Game:
                 self.screen.blit(ep.image, self.camera.apply(ep.rect))
 
             for m in self.monster_sprites:
-                self.screen.blit(m.image, self.camera.apply(m.rect))
-                bar_rect = m.rect.move(-int(self.camera.offset.x),
-                                       -int(self.camera.offset.y))
-                bw, bh = bar_rect.width, 6
-                bx, by = bar_rect.left, bar_rect.top - 12
-                ratio  = max(0.0, m.hp_current / m.hp_max)
-                pygame.draw.rect(self.screen, (139, 0, 0), (bx, by, bw, bh))
-                pygame.draw.rect(self.screen, (0, 220, 0), (bx, by, int(bw * ratio), bh))
-                pygame.draw.rect(self.screen, BLACK,        (bx, by, bw, bh), 1)
+                if hasattr(m, 'attack_state'):
+                    m.draw(self.screen, -int(self.camera.offset.x), -int(self.camera.offset.y))
+                    m.draw_health_bar(self.screen)
+                else:
+                    self.screen.blit(m.image, self.camera.apply(m.rect))
+                    bar_rect = m.rect.move(-int(self.camera.offset.x),
+                                           -int(self.camera.offset.y))
+                    bw, bh = bar_rect.width, 6
+                    bx, by = bar_rect.left, bar_rect.top - 12
+                    ratio  = max(0.0, m.hp_current / m.hp_max)
+                    pygame.draw.rect(self.screen, (139, 0, 0), (bx, by, bw, bh))
+                    pygame.draw.rect(self.screen, (0, 220, 0), (bx, by, int(bw * ratio), bh))
+                    pygame.draw.rect(self.screen, BLACK,        (bx, by, bw, bh), 1)
 
             for vfx in self.vfx_sprites:
                 self.screen.blit(vfx.image, self.camera.apply(vfx.rect))
@@ -825,6 +938,12 @@ class Game:
                     if not self.is_paused and self.player.hp_current > 0:
                         for door in self.doors:
                             if self.player.hitbox.colliderect(door['rect'].inflate(64, 64)):
+                                if door['type'] in ('porteglace', 'porte_to_glace') and not self.boss_glace_dead:
+                                    self.dialogue_box.show("La porte est verrouillée...", owner=None)
+                                    break
+                                
+                                if door['type'] == 'porte_to_glace':
+                                    self.coming_from_boss = True
                                 self.load_map(door['dest'])
                                 break
 
