@@ -297,15 +297,46 @@ class Game:
         # --- UI DIALOGUE ---
         self.dialogue_box = DialogueBox(self.screen)
 
+        self.doors = []
+        self.spawn_boss = None
+        self.killed_by_boss = False
+
+        # Joueur local initial (sera repositionné par load_map)
+        self.player = Player((200, 200), self.sound_manager, self.menu.keybinds)
+        self.visibles_sprites.add(self.player)
+        self.respawn_point = (200, 200)
+
         # --- CHARGEMENT DE LA MAP ---
-        tmx_data = load_pygame(os.path.join(ROOT_DIR, 'assets/maps/map1.tmx'))
+        self.load_map('assets/maps/map_glace.tmx')
+
+    def load_map(self, map_file):
+        print(f"Chargement de la map : {map_file}")
+        
+        for s in self.visibles_sprites:
+            if s != self.player and getattr(self, 'remote_player', None) != s:
+                s.kill()
+        self.obstacle_sprites.empty()
+        self.npc_sprites.empty()
+        self.ladder_sprites.empty()
+        self.monster_sprites.empty()
+        self.enemy_proj_sprites.empty()
+        self.vfx_sprites.empty()
+        self.particles.clear()
+        self.doors.clear()
+        self.spawn_boss = None
+        self.dialogue_box.hide()
+
+        full_path = os.path.join(ROOT_DIR, map_file)
+        if not os.path.exists(full_path):
+            print(f"ATTENTION : Le fichier map '{full_path}' n'existe pas encore.")
+            return
+
+        tmx_data = load_pygame(full_path)
         map_pixel_width  = tmx_data.width  * tmx_data.tilewidth
         map_pixel_height = tmx_data.height * tmx_data.tileheight
 
-        # Camera
         self.camera = Camera(map_pixel_width, map_pixel_height)
 
-        # Fond
         try:
             layer_fond = tmx_data.get_layer_by_name('Background')
             self.background_image = layer_fond.image
@@ -314,12 +345,10 @@ class Game:
             self.background_image = pygame.Surface((map_pixel_width, map_pixel_height))
             self.background_image.fill((50, 50, 50))
 
-        # Collisions
         for x, y, surf in tmx_data.get_layer_by_name('Collisions').tiles():
             if surf:
                 Tile((x * 32, y * 32), surf, [self.obstacle_sprites])
 
-        # Echelles
         try:
             for x, y, surf in tmx_data.get_layer_by_name('Echelles').tiles():
                 Tile((x * 32, y * 32), surf, [self.ladder_sprites])
@@ -327,17 +356,30 @@ class Game:
         except ValueError:
             print("INFO : Calque 'Echelles' introuvable — echelles ignorees.")
 
-        # Objets Tiled
         player_spawn = (200, 200)
         try:
             for obj in tmx_data.get_layer_by_name('Objets'):
                 obj_type = getattr(obj, 'type', None) or obj.properties.get('type', None)
+                if not obj_type:
+                    obj_type = getattr(obj, 'name', None)
+                
                 pos = (int(obj.x), int(obj.y))
-                if obj_type == 'SpawnJoueur':
+                rect = pygame.Rect(pos[0], pos[1], getattr(obj, 'width', 32), getattr(obj, 'height', 32))
+
+                obj_type_lower = obj_type.lower() if obj_type else ''
+
+                if obj_type_lower == 'spawnjoueur':
                     player_spawn = pos
-                elif obj_type == 'NPC':
+                elif obj_type_lower == 'spawnjoueurboss':
+                    self.spawn_boss = pos
+                elif obj_type_lower in ('npc', 'pnjporteglace', 'pnjboss'):
                     msg = obj.properties.get('message', 'Bonjour !')
                     NPC(pos, msg, [self.visibles_sprites, self.npc_sprites])
+                elif obj_type_lower in ('portetolave', 'portebossglace', 'porteglace'):
+                    dest = 'assets/maps/map1.tmx' if obj_type_lower == 'portetolave' else \
+                           'assets/maps/map_boss_glace.tmx' if obj_type_lower == 'portebossglace' else \
+                           'assets/maps/map_finale.tmx'
+                    self.doors.append({'rect': rect, 'dest': dest})
                 elif obj_type in MOB_CLASSES:
                     self._spawn_mob(obj_type, pos)
         except ValueError:
@@ -347,10 +389,14 @@ class Game:
             NPC((600, 500), "Salut Voyageur ! Attention aux trous !",
                 [self.visibles_sprites, self.npc_sprites])
 
-        # Joueur local
-        self.player = Player(player_spawn, self.sound_manager, self.menu.keybinds)
-        self.visibles_sprites.add(self.player)
-        self.respawn_point = player_spawn   # point de départ = premier respawn
+        if self.killed_by_boss and self.spawn_boss:
+            self.player.set_position(self.spawn_boss)
+            self.respawn_point = self.spawn_boss
+        else:
+            self.player.set_position(player_spawn)
+            self.respawn_point = player_spawn
+            
+        self.killed_by_boss = False
 
     def fade_in(self, duration_ms=600):
         """Fondu depuis le noir vers le contenu actuel."""
@@ -487,7 +533,7 @@ class Game:
     def _respawn(self):
         """Réinitialise le joueur au dernier point de respawn."""
         self.death_time = None
-        self.player.rect.topleft = self.respawn_point
+        self.player.set_position(self.respawn_point)
         self.player.hp_current   = self.player.hp_max
         self.player.vel_y        = 0
         # Vider les projectiles ennemis pour ne pas mourir immédiatement
@@ -542,6 +588,16 @@ class Game:
             for npc in self.npc_sprites:
                 npc.update(self.player.rect, self.dialogue_box)
 
+            # Portes (Hint)
+            for door in self.doors:
+                # On agrandit virtuellement la hitbox de la porte pour le hint (pour qu'il apparaisse un peu avant)
+                if self.player.hitbox.colliderect(door['rect'].inflate(64, 64)):
+                    self.dialogue_box.show("Appuyez sur [F] pour entrer")
+                    break
+            else:
+                if self.dialogue_box.text == "Appuyez sur [F] pour entrer":
+                    self.dialogue_box.hide()
+
             # Camera
             self.camera.update(self.player.rect)
 
@@ -560,6 +616,7 @@ class Game:
                     if m.contact_timer <= 0:
                         self.player.take_damage(getattr(m, 'ATTACK_DAMAGE', 10))
                         m.contact_timer = m.CONTACT_COOLDOWN
+                        self.killed_by_boss = ('Boss' in type(m).__name__)
 
                 if m.dead:
                     mob_type = type(m).__name__
@@ -588,6 +645,7 @@ class Game:
                 if ep.rect.colliderect(self.player.hitbox) and self.player.hp_current > 0:
                     self.player.take_damage(getattr(ep, 'damage', 10))
                     ep.kill()
+                    self.killed_by_boss = False
 
             # VFX + particules
             self.vfx_sprites.update()
@@ -756,6 +814,19 @@ class Game:
                     if self.game_started:
                         self.is_paused = not self.is_paused
                         self.menu.state = "main"
+
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_e:
+                    if not self.is_paused and self.player.hp_current > 0:
+                        for npc in self.npc_sprites:
+                            if hasattr(npc, 'interact'):
+                                npc.interact()
+
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_f:
+                    if not self.is_paused and self.player.hp_current > 0:
+                        for door in self.doors:
+                            if self.player.hitbox.colliderect(door['rect'].inflate(64, 64)):
+                                self.load_map(door['dest'])
+                                break
 
                 # ── Boutons Game Over ───────────────────────────────
                 if (not self.is_paused

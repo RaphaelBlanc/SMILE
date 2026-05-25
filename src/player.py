@@ -128,6 +128,11 @@ class Player(pygame.sprite.Sprite):
             self.hitbox_h
         )
 
+    def set_position(self, pos):
+        self.rect.topleft = pos
+        self.hitbox.centerx = self.rect.centerx
+        self.hitbox.bottom = self.rect.bottom
+
     # -------------------------------------------------------------------------
     # DEGATS
     # -------------------------------------------------------------------------
@@ -265,13 +270,13 @@ class Player(pygame.sprite.Sprite):
             self.apply_gravity()
 
         # Mouvement et Alignement de l'image
-        self.move(obstacles)
+        self.move(obstacles, ladder_sprites)
 
     # -------------------------------------------------------------------------
     # MOUVEMENT & COLLISION (Utilise la Hitbox)
     # -------------------------------------------------------------------------
 
-    def move(self, obstacles):
+    def move(self, obstacles, ladder_sprites=None):
         effective_speed = self.current_speed * self.slow_factor
 
         # 1. Mouvement Horizontal de la HITBOX
@@ -280,7 +285,7 @@ class Player(pygame.sprite.Sprite):
 
         # 2. Mouvement Vertical de la HITBOX
         self.hitbox.y += self.direction.y
-        self.check_collision('vertical', obstacles)
+        self.check_collision('vertical', obstacles, ladder_sprites)
         
         # 3. Alignement Visuel : On force le rect à prendre la taille exacte de l'image (225x225)
         self.rect = self.image.get_rect()
@@ -293,11 +298,22 @@ class Player(pygame.sprite.Sprite):
         offset_y = 80
         self.rect.y += offset_y
 
-    def check_collision(self, direction, obstacles):
+    def check_collision(self, direction, obstacles, ladder_sprites=None):
         # On echange temporairement le rect et la hitbox pour Pygame
         temp_rect = self.rect
         self.rect = self.hitbox
-        hits = pygame.sprite.spritecollide(self, obstacles, False)
+        hits = list(pygame.sprite.spritecollide(self, obstacles, False))
+        
+        # Plateformes "One-way" pour les échelles (marcher dessus sans tomber)
+        keys = pygame.key.get_pressed()
+        pressing_down = keys[self.keybinds["move_down"]]
+        
+        if ladder_sprites and direction == 'vertical' and self.direction.y > 0 and not pressing_down:
+            ladder_hits = pygame.sprite.spritecollide(self, ladder_sprites, False)
+            for l in ladder_hits:
+                if self.hitbox.bottom - self.direction.y <= l.rect.top + 15:
+                    hits.append(l)
+
         self.rect = temp_rect # On remet en place
 
         if hits:
