@@ -523,7 +523,7 @@ class Game:
                 if hasattr(m, 'heal_allies'):
                     m.heal_allies(self.monster_sprites)
 
-                if m.rect.colliderect(self.player.rect) and self.player.hp_current > 0:
+                if m.rect.colliderect(self.player.hitbox) and self.player.hp_current > 0:
                     if m.contact_timer <= 0:
                         self.player.take_damage(getattr(m, 'ATTACK_DAMAGE', 10))
                         m.contact_timer = m.CONTACT_COOLDOWN
@@ -552,7 +552,7 @@ class Game:
 
             # Projectiles ennemis → joueur
             for ep in list(self.enemy_proj_sprites):
-                if ep.rect.colliderect(self.player.rect) and self.player.hp_current > 0:
+                if ep.rect.colliderect(self.player.hitbox) and self.player.hp_current > 0:
                     self.player.take_damage(getattr(ep, 'damage', 10))
                     ep.kill()
 

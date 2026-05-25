@@ -2,30 +2,10 @@ import pygame
 import math
 import random
 import os
-from config import ROOT_DIR
 
 # ================================================================
 #  MONSTRE.PY  —  Ennemis avec machine à états — SMILE
 # ================================================================
-#
-#  FONCTIONNALITÉS COMMUNES (BaseEnemy) :
-#    ✔ Vie + barre de vie flottante
-#    ✔ Cooldown de contact (contact_timer / CONTACT_COOLDOWN)
-#    ✔ Retour au spawn + promenade quand le joueur est perdu de vue
-#    ✔ Sprites pré-calculés (plus de redraw chaque frame = 0 lag)
-#    ✔ Chargeur PNG prêt pour les animations
-#
-#  MONSTRES :
-#    1.  ChienEnrage       — glisse si sauté par-dessus
-#    2.  GoblinMelee       — corps-à-corps, stuné quand touché
-#    3.  GoblinArcher      — distance, repositionnement, flèches
-#    4.  EspritFeu         — bonds rapides, brûle au contact
-#    5.  EspritGlace       — lent mais gèle le joueur au contact
-#    6.  EspritFoudre      — téléportation aléatoire, choc électrique
-#    7.  EspritNature      — soigne ses alliés proches, poison passif
-#    8.  GolemPierre        — très lent, tremblement de terre, renforce 1 s
-# ================================================================
-
 
 # ────────────────────────────────────────────
 #  COULEURS
@@ -50,37 +30,21 @@ NATURE_GREEN = ( 30, 180,  60)
 SCREEN_WIDTH  = 1920
 SCREEN_HEIGHT = 1072
 
-
 # ================================================================
 #  UTILITAIRE : fabrique une surface pré-dessinée (évite le redraw)
 # ================================================================
 
 def _make_surf(w, h, draw_fn, *args):
-    """
-    Crée une surface SRCALPHA (w×h), appelle draw_fn(surf, *args)
-    dessus, et retourne la surface. Utilisé pour pré-calculer les
-    frames des placeholders sans redessiner chaque frame.
-    """
     surf = pygame.Surface((w, h), pygame.SRCALPHA)
     surf.fill((0, 0, 0, 0))
     draw_fn(surf, *args)
     return surf
-
 
 # ================================================================
 #  CLASSE DE BASE
 # ================================================================
 
 class BaseEnemy(pygame.sprite.Sprite):
-    """
-    Socle commun à tous les monstres.
-
-    Constantes à surcharger :
-      DETECT_RANGE   — distance de détection
-      LOSE_RANGE     — distance de perte de vue
-      PATROL_SPEED   — vitesse de promenade (0 = stationnaire)
-      PATROL_RADIUS  — amplitude de la promenade (px)
-    """
 
     DETECT_RANGE  = 400
     LOSE_RANGE    = 600
@@ -99,33 +63,25 @@ class BaseEnemy(pygame.sprite.Sprite):
         self.contact_timer    = 0
         self.CONTACT_COOLDOWN = 90
 
-        # Bornes de promenade
         self._patrol_targets = [
             self.spawn_pos[0] - self.PATROL_RADIUS,
             self.spawn_pos[0] + self.PATROL_RADIUS,
         ]
         self._patrol_idx = 0
 
-        # Image placeholder par défaut
         self.image = pygame.Surface((32, 32))
         self.image.fill((200, 0, 200))
         self.rect  = self.image.get_rect(topleft=pos)
 
-        # Système d'animation PNG (optionnel)
         self._sprites    = {}
         self._anim_timer = 0.0
         self._anim_index = 0
         self._anim_speed = 0.12
 
-    # ── Chargeur PNG ─────────────────────────────────────────────
     def _load_sprites(self, folder_name, states, target_size):
-        """
-        Charge assets/images/monstres/<folder_name>/<etat>/frame_XXX.png
-        Ne plante pas si les fichiers sont absents.
-        """
-        dossier_base = os.path.join(ROOT_DIR, "assets", "images", "monstres", folder_name)
+        base = os.path.join("assets", "monstres", folder_name)
         for state in states:
-            path = os.path.join(dossier_base, state)
+            path = os.path.join(base, state)
             if not os.path.isdir(path):
                 continue
             frames = []
@@ -143,11 +99,6 @@ class BaseEnemy(pygame.sprite.Sprite):
                 self._sprites[state] = frames
 
     def _animate(self, state, dt, loop=True):
-        """
-        Retourne la frame courante.
-        Appeler dans update() → self.image = self._animate(state, dt)
-        Puis flipper si facing_left.
-        """
         if state not in self._sprites or not self._sprites[state]:
             return self.image
         frames = self._sprites[state]
@@ -158,7 +109,6 @@ class BaseEnemy(pygame.sprite.Sprite):
                                else min(self._anim_index + 1, len(frames) - 1)
         return frames[self._anim_index]
 
-    # ── Vie ───────────────────────────────────────────────────────
     def take_damage(self, amount):
         self.hp_current -= amount
         if self.hp_current <= 0:
@@ -173,7 +123,6 @@ class BaseEnemy(pygame.sprite.Sprite):
         if self.contact_timer > 0:
             self.contact_timer -= 1
 
-    # ── Retour spawn / promenade ──────────────────────────────────
     def _do_return_to_spawn(self, obstacles):
         tx = self.spawn_pos[0]
         if abs(self.rect.centerx - tx) < 8:
@@ -191,7 +140,6 @@ class BaseEnemy(pygame.sprite.Sprite):
         d = 1 if tx > self.rect.centerx else -1
         self._try_move(d * self.PATROL_SPEED, obstacles)
 
-    # ── Barre de vie ──────────────────────────────────────────────
     def draw_health_bar(self, surface):
         if self.dead:
             return
@@ -202,7 +150,6 @@ class BaseEnemy(pygame.sprite.Sprite):
         pygame.draw.rect(surface, (0, 220, 0), (x, y, int(bw * ratio), bh))
         pygame.draw.rect(surface, BLACK,       (x, y, bw, bh), 1)
 
-    # ── Physique ──────────────────────────────────────────────────
     def distance_to(self, other_rect):
         a = pygame.math.Vector2(self.rect.center)
         b = pygame.math.Vector2(other_rect.center)
@@ -223,7 +170,6 @@ class BaseEnemy(pygame.sprite.Sprite):
                 self.rect.bottom = hit.rect.top
                 self.vy = 0
 
-
 # ================================================================
 #  1. CHIEN ENRAGÉ
 # ================================================================
@@ -232,27 +178,60 @@ class ChienEnrage(BaseEnemy):
 
     PATROL_SPEED  = 2
     PATROL_RADIUS = 120
-    CHASE_SPEED   = 5
-    SLIDE_SPEED   = 4
+    CHASE_SPEED   = 3
+    SLIDE_SPEED   = 6
     SLIDE_DECAY   = 0.15
     TURN_DELAY    = 45
     DETECT_RANGE  = 500
     LOSE_RANGE    = 750
-    ATTACK_RANGE  = 40
+    ATTACK_RANGE  = 5
     ATTACK_DAMAGE = 15
     ATTACK_CD     = 90
+    SLIDE_DAMAGE  = 10
+    JUMP_OVER_THRESHOLD = 20
 
     ST_WANDER = "wander"
     ST_RETURN = "return"
     ST_CHASE  = "chase"
+    ST_ATTACK = "attack"
     ST_SLIDE  = "slide"
+
+    _SHEET_INFO = {
+        "wander":  ("walk.png",       11, 10),
+        "return":  ("walk.png",       11, 10),
+        "chase":   ("Run.png",         9, 14),
+        "attack":  ("Attack_1.png",    6, 12),
+        "slide":   ("Run_Attack.png",  7, 14),
+        "hurt":    ("Hurt.png",        2,  8),
+        "dead":    ("Dead.png",        2,  6),
+    }
+    FRAME_SIZE = 128
 
     def __init__(self, pos, groups):
         super().__init__(pos, hp=60, groups=groups, capacite_absorbable="dash")
         self.CONTACT_COOLDOWN = 80
 
-        w, h = 48, 32
-        self.image = self._build_img(w, h)
+        self._sheets = {}
+        sheet_dir = os.path.join("assets", "monstres", "Black_Werewolf")
+        for state, (fname, nframes, _fps) in self._SHEET_INFO.items():
+            path = os.path.join(sheet_dir, fname)
+            if not os.path.isfile(path):
+                continue
+            try:
+                sheet = pygame.image.load(path).convert_alpha()
+                frames = []
+                for i in range(nframes):
+                    frame = sheet.subsurface(
+                        pygame.Rect(i * self.FRAME_SIZE, 0,
+                                    self.FRAME_SIZE, self.FRAME_SIZE)
+                    )
+                    frames.append(frame)
+                self._sheets[state] = frames
+            except pygame.error:
+                pass
+
+        placeholder = self._make_placeholder()
+        self.image = self._sheets.get("wander", [placeholder])[0]
         self.rect  = self.image.get_rect(topleft=pos)
 
         self.state        = self.ST_WANDER
@@ -262,74 +241,154 @@ class ChienEnrage(BaseEnemy):
         self.attack_timer = 0
         self.vy           = 0
 
+        self._anim_frame        = 0
+        self._anim_accum        = 0.0
+        self._anim_state        = None
+        self._attack_anim_done  = False
+
     @staticmethod
-    def _build_img(w, h):
-        s = pygame.Surface((w, h), pygame.SRCALPHA)
+    def _make_placeholder():
+        s = pygame.Surface((64, 64), pygame.SRCALPHA)
         s.fill((0, 0, 0, 0))
-        pygame.draw.ellipse(s, BROWN, (0, 8, w, 20))
-        pygame.draw.polygon(s, DARK_RED, [(4, 8), (10, 0), (16, 8)])
-        pygame.draw.polygon(s, DARK_RED, [(32, 8), (38, 0), (44, 8)])
-        pygame.draw.ellipse(s, (180, 100, 40), (28, 12, 16, 12))
-        pygame.draw.circle(s, RED,   (36, 10), 4)
-        pygame.draw.circle(s, BLACK, (37, 10), 2)
-        for px in [6, 14, 28, 36]:
-            pygame.draw.rect(s, DARK_RED, (px, 26, 6, 6))
+        pygame.draw.ellipse(s, BROWN, (0, 16, 64, 32))
+        pygame.draw.ellipse(s, (180, 100, 40), (36, 20, 24, 18))
+        pygame.draw.circle(s, RED,   (48, 18), 5)
+        pygame.draw.circle(s, BLACK, (49, 18), 2)
         return s
+
+    def _get_anim_frame(self, anim_state, loop=True):
+        if anim_state not in self._sheets:
+            return self._make_placeholder(), True
+
+        frames = self._sheets[anim_state]
+        fps    = self._SHEET_INFO[anim_state][2]
+
+        if self._anim_state != anim_state:
+            self._anim_state = anim_state
+            self._anim_frame = 0
+            self._anim_accum = 0.0
+
+        self._anim_accum += fps / 60.0
+        while self._anim_accum >= 1.0:
+            self._anim_accum -= 1.0
+            if loop:
+                self._anim_frame = (self._anim_frame + 1) % len(frames)
+            elif self._anim_frame < len(frames) - 1:
+                self._anim_frame += 1
+
+        done = (not loop) and (self._anim_frame == len(frames) - 1)
+        surf = frames[self._anim_frame]
+        if not self.facing_right:
+            surf = pygame.transform.flip(surf, True, False)
+        return surf, done
+
+    def _player_jumping_over(self, player):
+        # Utilisation de player.hitbox
+        horizontalement_proche = abs(player.hitbox.centerx - self.rect.centerx) < 60
+        clairement_au_dessus   = player.hitbox.bottom < self.rect.top - self.JUMP_OVER_THRESHOLD
+        en_l_air               = getattr(player, 'vy', 0) != 0 or not getattr(player, 'on_ground', True)
+        return horizontalement_proche and clairement_au_dessus and en_l_air
 
     def update(self, player, obstacles):
         if self.dead: return
         self.tick_contact_timer()
         self._apply_gravity(obstacles)
-        dist = self.distance_to(player.rect)
+        # Utilisation de player.hitbox
+        dist = self.distance_to(player.hitbox)
 
         if self.state in (self.ST_WANDER, self.ST_RETURN):
             if dist < self.DETECT_RANGE:
                 self.state = self.ST_CHASE
+
         elif self.state == self.ST_CHASE:
-            player_above = player.rect.bottom < self.rect.top + 10
-            if player_above and abs(player.rect.centerx - self.rect.centerx) < 60:
-                self._enter_slide()
+            if self._player_jumping_over(player):
+                d = 1 if player.hitbox.centerx > self.rect.centerx else -1
+                self._enter_slide(d)
+            elif dist <= self.ATTACK_RANGE and self.attack_timer == 0:
+                self.state = self.ST_ATTACK
             elif dist > self.LOSE_RANGE:
                 self.state = self.ST_RETURN
+
+        elif self.state == self.ST_ATTACK:
+            surf, done = self._get_anim_frame("attack", loop=False)
+            self.image = surf
+            if done:
+                if self.contact_timer == 0:
+                    player.take_damage(self.ATTACK_DAMAGE)
+                    self.contact_timer = self.CONTACT_COOLDOWN
+                self.attack_timer = self.ATTACK_CD
+                self.state = self.ST_CHASE
+            return
+
         elif self.state == self.ST_SLIDE:
             if abs(self.slide_vx) < 0.5:
-                self.slide_vx = 0
+                self.slide_vx = 0.0
                 self.state = self.ST_CHASE if dist < self.LOSE_RANGE else self.ST_RETURN
+
+        if self.attack_timer > 0:
+            self.attack_timer -= 1
 
         if self.state == self.ST_WANDER:
             self._do_wander(obstacles)
+            self.image, _ = self._get_anim_frame("wander")
+
         elif self.state == self.ST_RETURN:
-            if self._do_return_to_spawn(obstacles): self.state = self.ST_WANDER
+            if self._do_return_to_spawn(obstacles):
+                self.state = self.ST_WANDER
+            self.image, _ = self._get_anim_frame("return")
+
         elif self.state == self.ST_CHASE:
             self._do_chase(player, obstacles)
+            self.image, _ = self._get_anim_frame("chase")
+
         elif self.state == self.ST_SLIDE:
             self._do_slide(obstacles)
-
-        if self.attack_timer > 0: self.attack_timer -= 1
-        if dist < self.ATTACK_RANGE and self.state == self.ST_CHASE:
-            if self.attack_timer == 0 and self.contact_timer == 0:
-                player.take_damage(self.ATTACK_DAMAGE)
-                self.attack_timer  = self.ATTACK_CD
+            # Utilisation de player.hitbox
+            if self.contact_timer == 0 and self.rect.colliderect(player.hitbox):
+                player.take_damage(self.SLIDE_DAMAGE)
                 self.contact_timer = self.CONTACT_COOLDOWN
+            self.image, _ = self._get_anim_frame("slide")
+
+    def take_damage(self, amount):
+        super().take_damage(amount)
+        if not self.dead:
+            if self.state == self.ST_ATTACK:
+                self.state = self.ST_CHASE
+            self._anim_state = "hurt"
+            self._anim_frame = 0
+            self._anim_accum = 0.0
+            self.image, _ = self._get_anim_frame("hurt", loop=False)
+
+    def on_death(self):
+        self._anim_state = "dead"
+        self._anim_frame = 0
+        self._anim_accum = 0.0
+        self.image, _ = self._get_anim_frame("dead", loop=False)
+        self.kill()
 
     def _do_chase(self, player, obstacles):
         if self.turn_timer > 0:
-            self.turn_timer -= 1; return
-        d = 1 if player.rect.centerx > self.rect.centerx else -1
+            self.turn_timer -= 1
+            return
+        # Utilisation de player.hitbox
+        d = 1 if player.hitbox.centerx > self.rect.centerx else -1
         if (d == 1) != self.facing_right:
-            self.turn_timer = self.TURN_DELAY
-            self.facing_right = (d == 1); return
+            self.turn_timer   = self.TURN_DELAY
+            self.facing_right = (d == 1)
+            return
         self._try_move(d * self.CHASE_SPEED, obstacles)
 
-    def _enter_slide(self):
-        self.state    = self.ST_SLIDE
-        self.slide_vx = self.CHASE_SPEED * (1 if self.facing_right else -1)
-        self.turn_timer = self.TURN_DELAY
+    def _enter_slide(self, direction):
+        self.state        = self.ST_SLIDE
+        self.slide_vx     = self.SLIDE_SPEED * direction
+        self.facing_right = (direction == 1)
 
     def _do_slide(self, obstacles):
         self._try_move(self.slide_vx, obstacles)
-        if self.slide_vx > 0: self.slide_vx = max(0.0, self.slide_vx - self.SLIDE_DECAY)
-        else:                  self.slide_vx = min(0.0, self.slide_vx + self.SLIDE_DECAY)
+        if self.slide_vx > 0:
+            self.slide_vx = max(0.0, self.slide_vx - self.SLIDE_DECAY)
+        else:
+            self.slide_vx = min(0.0, self.slide_vx + self.SLIDE_DECAY)
 
 
 # ================================================================
@@ -386,7 +445,8 @@ class GoblinMelee(BaseEnemy):
         if self.dead: return
         self.tick_contact_timer()
         self._apply_gravity(obstacles)
-        dist = self.distance_to(player.rect)
+        # Utilisation de player.hitbox
+        dist = self.distance_to(player.hitbox)
 
         if self.attack_timer > 0: self.attack_timer -= 1
         if self.stun_timer > 0:
@@ -405,7 +465,8 @@ class GoblinMelee(BaseEnemy):
         elif self.state == self.ST_RETURN:
             if self._do_return_to_spawn(obstacles): self.state = self.ST_WANDER
         elif self.state == self.ST_CHASE:
-            d = 1 if player.rect.centerx > self.rect.centerx else -1
+            # Utilisation de player.hitbox
+            d = 1 if player.hitbox.centerx > self.rect.centerx else -1
             self.facing_right = (d == 1)
             self._try_move(d * self.SPEED, obstacles)
         elif self.state == self.ST_ATTACK:
@@ -419,7 +480,6 @@ class GoblinMelee(BaseEnemy):
         if not self.dead:
             self.stun_timer = self.STUN_DURATION
             self.state      = self.ST_STUN
-
 
 # ================================================================
 #  2b. GOBELIN ARCHER
@@ -445,7 +505,6 @@ class Arrow(pygame.sprite.Sprite):
         self.rect.x += self.SPEED * self.direction
         if pygame.sprite.spritecollide(self, obstacles, False): self.kill()
         if self.rect.right < 0 or self.rect.left > SCREEN_WIDTH: self.kill()
-
 
 class GoblinArcher(BaseEnemy):
 
@@ -498,7 +557,8 @@ class GoblinArcher(BaseEnemy):
         if self.dead: return
         self.tick_contact_timer()
         self._apply_gravity(obstacles)
-        dist = self.distance_to(player.rect)
+        # Utilisation de player.hitbox
+        dist = self.distance_to(player.hitbox)
 
         if self.shoot_timer > 0: self.shoot_timer -= 1
 
@@ -516,7 +576,8 @@ class GoblinArcher(BaseEnemy):
             if dist > self.LOSE_RANGE: self.state = self.ST_RETURN
             elif dist > self.PREFERRED_DIST: self.state = self.ST_POSITION
 
-        d = 1 if player.rect.centerx > self.rect.centerx else -1
+        # Utilisation de player.hitbox
+        d = 1 if player.hitbox.centerx > self.rect.centerx else -1
         self.facing_right = (d == 1)
 
         if self.state == self.ST_WANDER:
@@ -539,20 +600,11 @@ class GoblinArcher(BaseEnemy):
 
         self.arrows.update(obstacles)
 
-
 # ================================================================
 #  ESPRITS ÉLÉMENTAIRES
-#  Comportement : WANDER → RETURN → CHASE → JUMP → EXPLODE → mort
-#
-#  Quand l'esprit détecte le joueur il fonce vers lui en sautant.
-#  Dès qu'il touche le joueur (ou le sol sous lui) il explose :
-#    → effets élémentaires appliqués
-#    → l'esprit meurt (se dissout)
-#  L'explosion est visuelle (flash + cercle) pendant quelques frames.
 # ================================================================
 
 class ExplosionVFX(pygame.sprite.Sprite):
-    """Flash visuel d'explosion — vit quelques frames puis disparaît."""
     def __init__(self, pos, color, radius, groups):
         super().__init__(groups)
         d = radius * 2
@@ -560,40 +612,24 @@ class ExplosionVFX(pygame.sprite.Sprite):
         pygame.draw.circle(self.image, (*color, 180), (radius, radius), radius)
         pygame.draw.circle(self.image, (*color[:3], 80), (radius, radius), radius, 4)
         self.rect  = self.image.get_rect(center=pos)
-        self.timer = 18   # frames de vie
+        self.timer = 18
 
     def update(self, *args):
         self.timer -= 1
-        # Fondu sortant
         alpha = max(0, int(255 * self.timer / 18))
         self.image.set_alpha(alpha)
         if self.timer <= 0:
             self.kill()
 
-
 class EspritBase(BaseEnemy):
-    """
-    Socle commun aux 4 esprits élémentaires.
-
-    Machine à états :
-      WANDER  — petit saut sur place, attend
-      RETURN  — retourne au spawn
-      CHASE   — fonce en sautant vers le joueur
-      EXPLODE — frame d'explosion (VFX + effets), puis meurt
-
-    Chaque sous-classe surcharge :
-      COULEUR_CORPS / COULEUR_AURA — couleurs du placeholder
-      EXPLOSION_RADIUS             — rayon de l'explosion
-      _apply_explosion(player)     — effets élémentaires uniques
-    """
 
     PATROL_SPEED     = 0
     PATROL_RADIUS    = 0
     SPEED            = 3
-    JUMP_FORCE       = -11   # saut d'attaque vigoureux
+    JUMP_FORCE       = -11
     DETECT_RANGE     = 380
     LOSE_RANGE       = 560
-    EXPLOSION_RADIUS = 50    # rayon de détection de l'explosion
+    EXPLOSION_RADIUS = 50
 
     COULEUR_CORPS = PURPLE
     COULEUR_AURA  = (180, 0, 255)
@@ -615,7 +651,6 @@ class EspritBase(BaseEnemy):
         self.on_floor     = False
         self.bounce_timer = random.randint(60, 120)
 
-        # Groupes où spawner les VFX d'explosion (optionnel)
         self.vfx_groups = vfx_groups or []
 
     def _build_img(self, w, h):
@@ -630,16 +665,15 @@ class EspritBase(BaseEnemy):
         return s
 
     def _apply_explosion(self, player):
-        """Effets de l'explosion — surchargé par chaque esprit."""
         player.take_damage(10)
 
     def update(self, player, obstacles):
         if self.dead: return
         self.tick_contact_timer()
 
-        dist = self.distance_to(player.rect)
+        # Utilisation de player.hitbox
+        dist = self.distance_to(player.hitbox)
 
-        # ── Transitions ──────────────────────────────────────────
         if self.state in (self.ST_WANDER, self.ST_RETURN):
             if dist < self.DETECT_RANGE:
                 self.state = self.ST_CHASE
@@ -647,20 +681,18 @@ class EspritBase(BaseEnemy):
         elif self.state == self.ST_CHASE:
             if dist > self.LOSE_RANGE:
                 self.state = self.ST_RETURN
-            # Déclenche l'explosion si :
-            #  a) touche directement le rect du joueur
-            #  b) atterrit sur le sol très proche du joueur horizontalement
-            player_contact = self.rect.colliderect(player.rect)
+            
+            # Utilisation de player.hitbox
+            player_contact = self.rect.colliderect(player.hitbox)
             floor_under_player = (
                 self.on_floor
-                and abs(self.rect.centerx - player.rect.centerx) < self.EXPLOSION_RADIUS
-                and abs(self.rect.bottom - player.rect.bottom) < 40
+                and abs(self.rect.centerx - player.hitbox.centerx) < self.EXPLOSION_RADIUS
+                and abs(self.rect.bottom - player.hitbox.bottom) < 40
             )
             if player_contact or floor_under_player:
                 self.state = self.ST_EXPLODE
 
         elif self.state == self.ST_EXPLODE:
-            # Applique les effets, spawn le VFX, meurt
             self._apply_explosion(player)
             ExplosionVFX(
                 self.rect.center,
@@ -671,7 +703,6 @@ class EspritBase(BaseEnemy):
             self.on_death()
             return
 
-        # ── Physique + actions ───────────────────────────────────
         self._apply_gravity_esprit(obstacles)
 
         if self.state == self.ST_WANDER:
@@ -685,12 +716,13 @@ class EspritBase(BaseEnemy):
                 self.state = self.ST_WANDER
 
         elif self.state == self.ST_CHASE:
-            d = 1 if player.rect.centerx > self.rect.centerx else -1
+            # Utilisation de player.hitbox
+            d = 1 if player.hitbox.centerx > self.rect.centerx else -1
             self._try_move(d * self.SPEED, obstacles)
-            # Saute en continu pour franchir les obstacles ET s'élancer sur le joueur
+            
             if self.on_floor:
-                # Saut plus fort si le joueur est au-dessus
-                player_above = player.rect.centery < self.rect.centery - 20
+                # Utilisation de player.hitbox
+                player_above = player.hitbox.centery < self.rect.centery - 20
                 force = self.JUMP_FORCE * 1.1 if player_above else self.JUMP_FORCE * 0.9
                 self.vy = force
 
@@ -704,14 +736,9 @@ class EspritBase(BaseEnemy):
                 self.rect.bottom = hit.rect.top
                 self.vy = 0; self.on_floor = True
 
-
 # ── Esprit du Feu ──────────────────────────────────────────────
 
 class EspritFeu(EspritBase):
-    """
-    Rapide — saute et explose en brûlant le joueur (DOT).
-    Capacité absorbable : "fireball"
-    """
     SPEED            = 4
     JUMP_FORCE       = -12
     DETECT_RANGE     = 450
@@ -720,7 +747,7 @@ class EspritFeu(EspritBase):
     COULEUR_CORPS    = (220, 60,  0)
     COULEUR_AURA     = (255, 200, 0)
     BURN_DPS         = 5
-    BURN_DUR         = 3   # secondes
+    BURN_DUR         = 3
 
     def __init__(self, pos, groups, vfx_groups=None):
         super().__init__(pos, groups, hp=30, capacite="fireball",
@@ -733,22 +760,17 @@ class EspritFeu(EspritBase):
             player.burn_timer = self.BURN_DUR * 60
             player.burn_dps   = self.BURN_DPS
 
-
 # ── Esprit de Glace ────────────────────────────────────────────
 
 class EspritGlace(EspritBase):
-    """
-    Lent mais gèle le joueur à l'explosion (slow puissant + zone).
-    Capacité absorbable : "ice_shot"
-    """
     SPEED            = 1
     JUMP_FORCE       = -8
     DETECT_RANGE     = 350
     LOSE_RANGE       = 500
-    EXPLOSION_RADIUS = 70    # plus grand — zone de gel
+    EXPLOSION_RADIUS = 70
     COULEUR_CORPS    = BLUE_ICE
     COULEUR_AURA     = CYAN
-    SLOW_DUR         = 180   # ~3 s
+    SLOW_DUR         = 180
     SLOW_FAC         = 0.25
 
     def __init__(self, pos, groups, vfx_groups=None):
@@ -761,7 +783,6 @@ class EspritGlace(EspritBase):
         s.fill((0, 0, 0, 0))
         pygame.draw.ellipse(s, BLUE_ICE, (0, 4, w, h - 4))
         pygame.draw.ellipse(s, CYAN,     (5, 0, w - 10, h // 2))
-        # Cristaux de glace
         for cx, cy in [(5, 18), (15, 22), (24, 16)]:
             pygame.draw.polygon(s, WHITE,
                                 [(cx, cy-6), (cx+3, cy), (cx, cy+4), (cx-3, cy)])
@@ -776,15 +797,9 @@ class EspritGlace(EspritBase):
         player.slow_timer  = self.SLOW_DUR
         player.slow_factor = self.SLOW_FAC
 
-
 # ── Esprit de Foudre ───────────────────────────────────────────
 
 class EspritFoudre(EspritBase):
-    """
-    Très rapide — se téléporte près du joueur puis plonge dessus.
-    L'explosion électrique inflige des dégâts + impulsion verticale.
-    Capacité absorbable : "thunder"
-    """
     SPEED            = 5
     JUMP_FORCE       = -14
     DETECT_RANGE     = 500
@@ -793,7 +808,7 @@ class EspritFoudre(EspritBase):
     COULEUR_CORPS    = (180, 180, 0)
     COULEUR_AURA     = ELECTRIC
     SHOCK_DAMAGE     = 18
-    TELEPORT_CD      = 150   # frames entre téléportations
+    TELEPORT_CD      = 150
 
     def __init__(self, pos, groups, vfx_groups=None):
         super().__init__(pos, groups, hp=25, capacite="thunder",
@@ -817,16 +832,15 @@ class EspritFoudre(EspritBase):
     def update(self, player, obstacles):
         if self.dead: return
 
-        # Téléportation périodique en CHASE pour se repositionner
         if self.state == self.ST_CHASE:
             if self.tp_timer > 0:
                 self.tp_timer -= 1
             elif self.on_floor:
-                # Se téléporte à côté du joueur avant de sauter
                 offset_x = random.choice([-80, 80])
-                nx = max(32, min(1920 - 32, player.rect.centerx + offset_x))
+                # Utilisation de player.hitbox
+                nx = max(32, min(1920 - 32, player.hitbox.centerx + offset_x))
                 self.rect.centerx = nx
-                self.rect.bottom  = player.rect.bottom
+                self.rect.bottom  = player.hitbox.bottom
                 self.vy           = 0
                 self.tp_timer     = self.TELEPORT_CD
 
@@ -834,18 +848,12 @@ class EspritFoudre(EspritBase):
 
     def _apply_explosion(self, player):
         player.take_damage(self.SHOCK_DAMAGE)
-        # Impulsion : propulse le joueur vers le haut
         if hasattr(player, 'direction'):
             player.direction.y = -10
-
 
 # ── Esprit de Nature ───────────────────────────────────────────
 
 class EspritNature(EspritBase):
-    """
-    Empoisonne le joueur à l'explosion + soigne ses alliés proches.
-    Capacité absorbable : "poison_cloud"
-    """
     SPEED            = 2
     JUMP_FORCE       = -10
     DETECT_RANGE     = 350
@@ -854,7 +862,7 @@ class EspritNature(EspritBase):
     COULEUR_CORPS    = NATURE_GREEN
     COULEUR_AURA     = GREEN_LIGHT
     POISON_DPS       = 3
-    POISON_DUR       = 4   # secondes
+    POISON_DUR       = 4
     HEAL_AMOUNT      = 8
     HEAL_RADIUS      = 130
     HEAL_CD          = 180
@@ -883,12 +891,10 @@ class EspritNature(EspritBase):
 
     def update(self, player, obstacles):
         if self.dead: return
-        # Soin des alliés pendant la chasse
         if self.heal_timer > 0: self.heal_timer -= 1
         super().update(player, obstacles)
 
     def heal_allies(self, monster_group):
-        """À appeler depuis le Game — soigne les voisins."""
         if self.heal_timer > 0 or self.dead: return
         for ally in monster_group:
             if ally is self or ally.dead: continue
@@ -904,9 +910,8 @@ class EspritNature(EspritBase):
             player.poison_timer = self.POISON_DUR * 60
             player.poison_dps   = self.POISON_DPS
 
-
 # ================================================================
-#  GOLEM DE PIERRE  (corrigé : sprites pré-calculés, plus de lag)
+#  GOLEM DE PIERRE 
 # ================================================================
 
 class GolemPierre(BaseEnemy):
@@ -938,10 +943,8 @@ class GolemPierre(BaseEnemy):
         self.screen_shake_ref = screen_shake_ref
 
         w, h = 56, 72
-        # ── Pré-calcul des surfaces (UNE SEULE FOIS) ────────────
         self._img_sleep  = self._build_img(w, h, active=False)
         self._img_active = self._build_img(w, h, active=True)
-        # Deux frames de clignotement pour le reinforce
         self._img_blink0 = self._build_img(w, h, active=True)
         self._img_blink1 = self._build_img(w, h, active=False)
 
@@ -979,18 +982,17 @@ class GolemPierre(BaseEnemy):
         if self.dead: return
         self.tick_contact_timer()
         self._apply_gravity(obstacles)
-        dist = self.distance_to(player.rect)
+        # Utilisation de player.hitbox
+        dist = self.distance_to(player.hitbox)
 
         if self.attack_timer > 0: self.attack_timer -= 1
 
-        # Reinforce : figé, clignotement par swap de surface pré-calculée
         if self.reinforce_timer > 0:
             self.reinforce_timer -= 1
             self.image = self._img_blink0 if (self.reinforce_timer // 8) % 2 == 0 \
                          else self._img_blink1
             return
 
-        # Transitions
         if self.state == self.ST_SLEEP:
             if dist < self.DETECT_RANGE:
                 self.image = self._img_active
@@ -1016,8 +1018,8 @@ class GolemPierre(BaseEnemy):
         elif self.state in (self.ST_STOMP, self.ST_QUAKE):
             self.state = self.ST_CHASE
 
-        # Actions
-        d = 1 if player.rect.centerx > self.rect.centerx else -1
+        # Utilisation de player.hitbox
+        d = 1 if player.hitbox.centerx > self.rect.centerx else -1
         self.facing_right = (d == 1)
 
         if self.state == self.ST_CHASE:
@@ -1042,79 +1044,11 @@ class GolemPierre(BaseEnemy):
                 self.state        = self.ST_CHASE
 
     def _do_quake(self, player):
-        dist = self.distance_to(player.rect)
+        # Utilisation de player.hitbox
+        dist = self.distance_to(player.hitbox)
         if dist <= self.QUAKE_RANGE:
             player.take_damage(self.QUAKE_DAMAGE)
             player.slow_timer  = self.QUAKE_SLOW_DUR
             player.slow_factor = self.QUAKE_SLOW_FAC
         if self.screen_shake_ref is not None:
             self.screen_shake_ref[0] = 20
-
-
-# ================================================================
-#  ABSORPTION KIRBY  —  logique côté joueur
-# ================================================================
-"""
-──────────────────────────────────────────────────────────────────
-  Dans player.py — __init__ :
-      self.absorbed_capacite = None
-      self.slow_timer        = 0
-      self.slow_factor       = 1.0
-      self.burn_timer        = 0
-      self.burn_dps          = 0
-
-  Dans player.py — update :
-      # Ralentissement
-      if self.slow_timer > 0: self.slow_timer -= 1
-      else:                   self.slow_factor = 1.0
-      # Brûlure
-      if self.burn_timer > 0:
-          self.burn_timer -= 1
-          if self.burn_timer % 60 == 0:
-              self.hp_current = max(0, self.hp_current - self.burn_dps)
-
-  Dans player.py — move / get_input :
-      effective_speed = self.current_speed * self.slow_factor
-
-  Quand un monstre meurt (Game/TestMob) :
-      cap = getattr(m, 'capacite_absorbable', None)
-      if cap:
-          player.absorbed_capacite = cap
-          # → déclencher l'animation d'absorption, activer la capa dans Capacite.py
-
-──────────────────────────────────────────────────────────────────
-  TABLE DES CAPACITÉS
-──────────────────────────────────────────────────────────────────
-  "dash"          ChienEnrage    — sprint rapide
-  "slash"         GoblinMelee    — attaque mêlée rapide
-  "arrow"         GoblinArcher   — tir de flèche
-  "fireball"      EspritFeu      — boule de feu brûlante
-  "ice_shot"      EspritGlace    — projectile glaçant (slow)
-  "thunder"       EspritFoudre   — éclair (damage + impulsion)
-  "poison_cloud"  EspritNature   — nuage empoisonnant
-  "stone_armor"   GolemPierre    — armure temporaire
-
-──────────────────────────────────────────────────────────────────
-  SPRITES ANIMÉS — quand les PNG sont prêts
-──────────────────────────────────────────────────────────────────
-  Décommenter _load_sprites() dans chaque __init__.
-  Structure :
-    assets/images/monstres/chien_enrage/wander/frame_001.png ...
-  Puis dans update() :
-    self.image = self._animate(self.state, dt)
-    if not self.facing_right:
-        self.image = pygame.transform.flip(self.image, True, False)
-
-──────────────────────────────────────────────────────────────────
-  SCREEN-SHAKE (GolemPierre)
-──────────────────────────────────────────────────────────────────
-  Dans TestMob.__init__ :
-      self.shake_ref = [0]
-  Passer à GolemPierre(..., screen_shake_ref=self.shake_ref)
-  Dans draw() :
-      shake = 0
-      if self.shake_ref[0] > 0:
-          self.shake_ref[0] -= 1
-          shake = random.randint(-6, 6)
-      self.screen.blit(self.background, (shake, shake))
-"""

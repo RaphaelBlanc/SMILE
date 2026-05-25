@@ -2,7 +2,11 @@ import pygame
 import os
 from animator import Animator
 from capacite import Capacite
-from config import ROOT_DIR
+
+# --- CALCUL DU CHEMIN SANS CONFIG.PY ---
+# Le code est dans "src", on recule d'un dossier pour aller à la racine
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(CURRENT_DIR)
 
 #ECRAN#
 SCREEN_WIDTH  = 1920
@@ -39,17 +43,7 @@ class Player(pygame.sprite.Sprite):
 
     def __init__(self, pos, sound_manager, keybinds=None):
         super().__init__()
-        self.image = pygame.Surface((32, 64))
-        self.image.fill(RED)
-
-        self.rect      = self.image.get_rect(topleft=pos)
-        self.direction = pygame.math.Vector2(0, 0)
-        self.velocity  = pygame.math.Vector2(0, 0)
-
-        self.count_jump   = 0
-        self.jump_pressed = False
-        self.sound_manager = sound_manager
-
+        
         # --- TOUCHES CONFIGURABLES ---
         self.keybinds = keybinds or {
             "move_left":  pygame.K_q,
@@ -61,6 +55,13 @@ class Player(pygame.sprite.Sprite):
             "attack":     pygame.K_f,
             "dash":       pygame.K_v,
         }
+
+        self.direction = pygame.math.Vector2(0, 0)
+        self.velocity  = pygame.math.Vector2(0, 0)
+
+        self.count_jump   = 0
+        self.jump_pressed = False
+        self.sound_manager = sound_manager
 
         # --- VITESSE ET DIRECTION ---
         self.facing_right  = True
@@ -76,11 +77,11 @@ class Player(pygame.sprite.Sprite):
         self.hp_current        = 100
         self.health_bar_length = 200
 
-        # --- INVINCIBILITE apres degats (Hugo) ---
+        # --- INVINCIBILITE apres degats ---
         self.hurt_timer    = 0
         self.hurt_duration = 45
 
-        # --- EFFETS DE STATUT (Hugo — necessaires pour les monstres) ---
+        # --- EFFETS DE STATUT ---
         self.slow_timer   = 0
         self.slow_factor  = 1.0
         self.burn_timer   = 0
@@ -89,38 +90,50 @@ class Player(pygame.sprite.Sprite):
         self.poison_timer = 0
         self.poison_dps   = 0
 
-        # --- ECHELLE (ton code) ---
+        # --- ECHELLE ---
         self.on_ladder = False
 
         self.animations = {
             'idle': [], 'run': [], 'sprint': [], 'death': [],
-            'attack': [], 'land': [], 'back': [], 'jump': [], 'front': []
+            'land': [], 'back': [], 'jump': [], 'front': []
         }
+        
+        # Charge l'image (Taille définie dans load_assets)
         self.load_assets()
+        
         self.animator       = Animator(self.animations, fps=10)
-        self.status         = 'idle'
+        self.status         = 'idle_right'
         self.is_sprinting   = False
         self.view_direction = 'side'
-        self.is_attacking   = False
 
         if len(self.animations['idle_right']) > 0:
             self.image = self.animations['idle_right'][0]
         else:
-            print("ERREUR CRITIQUE : Aucune image trouvée dans assets/images/player/idle_right/")
-            self.image = pygame.Surface((32, 64))
+            self.image = pygame.Surface((128, 128))
             self.image.fill((255, 0, 0))
 
+        # -------------------------------------------------------------
+        # REGLAGE DE LA HITBOX 
+        # -------------------------------------------------------------
+        self.hitbox_w = 128  # Largeur de la hitbox de collision
+        self.hitbox_h = 128  # Hauteur de la hitbox
+
         self.rect = self.image.get_rect(topleft=pos)
-        self.rect = self.image.get_rect(topleft=pos)
+        
+        # On centre la petite hitbox en bas de la grande image
+        self.hitbox = pygame.Rect(
+            self.rect.centerx - (self.hitbox_w // 2), 
+            self.rect.bottom - self.hitbox_h, 
+            self.hitbox_w, 
+            self.hitbox_h
+        )
 
     # -------------------------------------------------------------------------
-    # DEGATS avec invincibilite (Hugo)
+    # DEGATS
     # -------------------------------------------------------------------------
 
     def take_damage(self, amount):
-        """Applique des degats avec fenetre d'invincibilite."""
-        if self.hurt_timer > 0:
-            return
+        if self.hurt_timer > 0: return
         self.hp_current = max(0, self.hp_current - int(amount))
         self.hurt_timer = self.hurt_duration
 
@@ -130,32 +143,27 @@ class Player(pygame.sprite.Sprite):
 
     def get_input(self, ladder_sprites):
         keys = pygame.key.get_pressed()
-        kb   = self.keybinds   # raccourci lisible
+        kb   = self.keybinds
 
-        # ATTAQUE
-        if keys[kb["attack"]] and not self.is_attacking:
-            self.is_attacking = True
-            self.animator.frame_index = 0
-
-        # SPRINT
         if keys[kb["sprint"]]:
             self.is_sprinting = True
-            self.speed = 10
+            self.current_speed = self.sprint_speed
         else:
             self.is_sprinting = False
-            self.speed = 6
+            self.current_speed = self.normal_speed
 
-        # DETECTION ECHELLE
+        # Pygame utilise rect par défaut, on lui passe la hitbox temporairement
+        temp_rect = self.rect
+        self.rect = self.hitbox
         touching_ladder = bool(pygame.sprite.spritecollide(self, ladder_sprites, False))
+        self.rect = temp_rect
+
         if touching_ladder:
-            if keys[kb["move_up"]]:
-                self.on_ladder = True
-            if keys[kb["move_down"]]:
+            if keys[kb["move_up"]] or keys[kb["move_down"]]:
                 self.on_ladder = True
         else:
             self.on_ladder = False
 
-        # MOUVEMENT HORIZONTAL
         moving_right      = keys[kb["move_right"]]
         moving_left       = keys[kb["move_left"]]
         moving_horizontal = moving_right or moving_left
@@ -172,13 +180,6 @@ class Player(pygame.sprite.Sprite):
         else:
             self.direction.x = 0
 
-        # VITESSE
-        if keys[kb["sprint"]]:
-            self.current_speed = self.sprint_speed
-        else:
-            self.current_speed = self.normal_speed
-
-        # SAUT
         if keys[kb["jump"]] and not self.jump_pressed:
             self.on_ladder = False
             self.jump()
@@ -190,7 +191,8 @@ class Player(pygame.sprite.Sprite):
         if self.count_jump < 2:
             self.direction.y = JUMP_FORCE
             self.count_jump += 1
-            self.sound_manager.play("jump")
+            if self.sound_manager:
+                self.sound_manager.play("jump")
 
     # -------------------------------------------------------------------------
     # PHYSIQUE
@@ -203,9 +205,9 @@ class Player(pygame.sprite.Sprite):
 
     def apply_ladder_physics(self):
         keys = pygame.key.get_pressed()
-        if keys[pygame.K_z] or keys[pygame.K_UP]:
+        if keys[self.keybinds["move_up"]]:
             self.direction.y = -LADDER_CLIMB_SPEED
-        elif keys[pygame.K_s] or keys[pygame.K_DOWN]:
+        elif keys[self.keybinds["move_down"]]:
             self.direction.y = LADDER_DESCEND_SPEED
         else:
             self.direction.y = LADDER_SLIP_SPEED
@@ -215,17 +217,14 @@ class Player(pygame.sprite.Sprite):
     # -------------------------------------------------------------------------
 
     def update(self, obstacles, ladder_sprites, dt):
+        
         self.get_input(ladder_sprites)
         self.get_status()
 
-        # --- TIMERS (Hugo) ---
-        if self.hurt_timer > 0:
-            self.hurt_timer -= 1
-
-        if self.slow_timer > 0:
-            self.slow_timer -= 1
-        else:
-            self.slow_factor = 1.0
+        # Timers
+        if self.hurt_timer > 0: self.hurt_timer -= 1
+        if self.slow_timer > 0: self.slow_timer -= 1
+        else: self.slow_factor = 1.0
 
         if self.burn_timer > 0:
             self.burn_timer -= 1
@@ -239,73 +238,83 @@ class Player(pygame.sprite.Sprite):
             if self.poison_timer <= 0:
                 self.is_poisoned = False
 
-        # --- ANIMATION ---
-        if self.is_attacking:
-            self.animator.animation_speed = 0.25
-        elif self.status and 'sprint' in self.status:
+        # Animation Vitesse
+        if self.status and 'sprint' in self.status:
             self.animator.animation_speed = 1.0 / 12
         elif self.status and 'idle' in self.status:
             self.animator.animation_speed = 1.0 / 6
         else:
             self.animator.animation_speed = 0.15
 
-        raw_image = self.animator.get_current_frame(dt, self.status)
+        self.image = self.animator.get_current_frame(dt, self.status)
 
-        if self.facing_right:
-            self.image = raw_image
-        else:
-            self.image = pygame.transform.flip(raw_image, True, False)
-
-        # CLIGNOTEMENT si blesse (Hugo)
+        # Clignotement degats
         if self.hurt_timer > 0 and (self.hurt_timer // 6) % 2 == 0:
             blink = self.image.copy()
             blink.set_alpha(80)
             self.image = blink
 
+        # Capacités et Projectiles
         self.capacite.bdf(self.keybinds["attack"])
-        self.capacite.projectiles.update(obstacles)
         self.capacite.dash(obstacles, self.keybinds["dash"])
+        self.capacite.projectiles.update(obstacles)
 
-        # PHYSIQUE : gravite normale OU echelle
         if self.on_ladder:
             self.apply_ladder_physics()
         else:
             self.apply_gravity()
 
+        # Mouvement et Alignement de l'image
         self.move(obstacles)
 
     # -------------------------------------------------------------------------
-    # MOUVEMENT & COLLISION
+    # MOUVEMENT & COLLISION (Utilise la Hitbox)
     # -------------------------------------------------------------------------
 
     def move(self, obstacles):
-        # Vitesse effective avec ralentissement (Hugo)
         effective_speed = self.current_speed * self.slow_factor
 
-        self.rect.x += int(self.direction.x * effective_speed)
+        # 1. Mouvement Horizontal de la HITBOX
+        self.hitbox.x += int(self.direction.x * effective_speed)
         self.check_collision('horizontal', obstacles)
 
-        self.rect.y += self.direction.y
+        # 2. Mouvement Vertical de la HITBOX
+        self.hitbox.y += self.direction.y
         self.check_collision('vertical', obstacles)
+        
+        # 3. Alignement Visuel : On force le rect à prendre la taille exacte de l'image (225x225)
+        self.rect = self.image.get_rect()
+        
+        # On aligne le bas de l'image sur le bas de la hitbox
+        self.rect.midbottom = self.hitbox.midbottom
+
+        # --- AJUSTEMENT VISUEL ---
+        # Si ton slime vole ou s'enfonce dans le sol, modifie cette valeur
+        offset_y = 80
+        self.rect.y += offset_y
 
     def check_collision(self, direction, obstacles):
+        # On echange temporairement le rect et la hitbox pour Pygame
+        temp_rect = self.rect
+        self.rect = self.hitbox
         hits = pygame.sprite.spritecollide(self, obstacles, False)
+        self.rect = temp_rect # On remet en place
 
         if hits:
             if direction == 'horizontal':
                 if self.direction.x > 0:
-                    self.rect.right = hits[0].rect.left
+                    self.hitbox.right = hits[0].rect.left
                 if self.direction.x < 0:
-                    self.rect.left = hits[0].rect.right
+                    self.hitbox.left = hits[0].rect.right
 
             if direction == 'vertical':
                 if self.direction.y > 0:
-                    self.rect.bottom = hits[0].rect.top
+                    self.hitbox.bottom = hits[0].rect.top
                     self.direction.y = 0
                     self.count_jump  = 0
                     self.on_ladder   = False
                 if self.direction.y < 0:
-                    self.rect.top    = hits[0].rect.bottom
+                    self.hitbox.top    = hits[0].rect.bottom
                     self.direction.y = 0
 
     # -------------------------------------------------------------------------
@@ -321,31 +330,20 @@ class Player(pygame.sprite.Sprite):
         elif not self.on_ladder and keys[kb["move_down"]]:
             self.view_direction = 'front'
 
-        # 1. ATTAQUE
-        if self.is_attacking:
-            self.status = 'attack' + ("_right" if self.facing_right else "_left")
-            if self.animator.frame_index >= len(self.animations[self.status]) - 1:
-                self.is_attacking = False
-            return
-
-        # 2. ECHELLE
         if self.on_ladder:
             self.status = 'back'
             return
 
-        # 3. SAUT / CHUTE
         if self.direction.y < -0.1 or self.direction.y > 1.1:
             action = 'jump' if self.direction.y < 0 else 'land'
             self.status = action + ("_right" if self.facing_right else "_left")
             self.view_direction = 'side'
 
-        # 4. MOUVEMENT HORIZONTAL
         elif self.direction.x != 0:
             action = 'sprint' if self.is_sprinting else 'run'
             self.status = action + ("_right" if self.facing_right else "_left")
             self.view_direction = 'side'
 
-        # 5. REPOS / VUES SPECIALES
         else:
             if self.view_direction == 'back':
                 self.status = 'back'
@@ -355,33 +353,81 @@ class Player(pygame.sprite.Sprite):
                 self.status = 'idle' + ("_right" if self.facing_right else "_left")
 
     # -------------------------------------------------------------------------
-    # CHARGEMENT ASSETS
+    # CHARGEMENT ASSETS (SLIME SPRITE SHEETS)
     # -------------------------------------------------------------------------
 
     def load_assets(self):
-        actions = ['idle', 'run', 'sprint', 'death', 'attack', 'jump', 'land', 'back', 'front']
-        self.animations = {}
-        for action in actions:
-            if action in ['jump', 'land', 'idle', 'run', 'sprint', 'death', 'attack']:
-                self.animations[f"{action}_right"] = []
-                self.animations[f"{action}_left"]  = []
-            else:
-                self.animations[action] = []
+        # On a retiré attack_right et attack_left de la liste
+        actions = [
+            'idle_right', 'idle_left', 'run_right', 'run_left', 
+            'sprint_right', 'sprint_left', 'jump_right', 'jump_left', 
+            'land_right', 'land_left', 'death', 'back', 'front'
+        ]
+        self.animations = {action: [] for action in actions}
 
-        base_path = os.path.join(ROOT_DIR, 'assets/images/player/')
-        for state in self.animations.keys():
-            full_path = os.path.join(base_path, state)
-            if os.path.exists(full_path):
-                files = sorted(os.listdir(full_path))
-                for file_name in files:
-                    if file_name.lower().endswith('.png'):
-                        image_path = os.path.join(full_path, file_name)
-                        image_surf = pygame.image.load(image_path).convert_alpha()
-                        image_surf = pygame.transform.scale_by(image_surf, 0.5)
-                        self.animations[state].append(image_surf)
+        # --- NOUVEAU CHEMIN DES IMAGES ---
+        base_path = os.path.join(ROOT_DIR, 'assets', 'images', 'player', 'mouvements')
 
-            if len(self.animations[state]) == 0:
-                print(f"--- ATTENTION : Aucune image trouvée dans {full_path} ---")
-                placeholder = pygame.Surface((32, 64))
+        # --- REGLAGE DE LA TAILLE VISUELLE (Image Géante) ---
+        SLIME_SIZE = (225, 225) 
+
+        # --- ORIENTATION DES LIGNES ---
+        ROW_FRONT = 0
+        ROW_BACK  = 1
+        ROW_LEFT  = 2
+        ROW_RIGHT = 3
+
+        def slice_sheet(filename, cols, rows):
+            path = os.path.join(base_path, filename)
+            if not os.path.exists(path):
+                print(f"ATTENTION : Fichier manquant {filename} dans {base_path}")
+                return None
+            try:
+                sheet = pygame.image.load(path).convert_alpha()
+                frame_w = sheet.get_width() // cols
+                frame_h = sheet.get_height() // rows
+                
+                sheet_frames = []
+                for r in range(rows):
+                    row_frames = []
+                    for c in range(cols):
+                        rect = pygame.Rect(c * frame_w, r * frame_h, frame_w, frame_h)
+                        img = pygame.Surface((frame_w, frame_h), pygame.SRCALPHA)
+                        img.blit(sheet, (0, 0), rect)
+                        img = pygame.transform.scale(img, SLIME_SIZE)
+                        row_frames.append(img)
+                    sheet_frames.append(row_frames)
+                return sheet_frames
+            except Exception as e:
+                print(f"Erreur decoupage {filename}: {e}")
+                return None
+
+        # 1. IDLE / MOUVEMENT
+        idle_frames = slice_sheet("Slime1_Idle_body.png", cols=6, rows=4)
+        if idle_frames:
+            self.animations['front']      = idle_frames[ROW_FRONT]
+            self.animations['back']       = idle_frames[ROW_BACK]
+            self.animations['idle_left']  = idle_frames[ROW_LEFT]
+            self.animations['idle_right'] = idle_frames[ROW_RIGHT]
+            
+            # On utilise l'animation idle pour courir/sauter
+            self.animations['run_left']     = idle_frames[ROW_LEFT]
+            self.animations['run_right']    = idle_frames[ROW_RIGHT]
+            self.animations['sprint_left']  = idle_frames[ROW_LEFT]
+            self.animations['sprint_right'] = idle_frames[ROW_RIGHT]
+            self.animations['jump_left']    = idle_frames[ROW_LEFT]
+            self.animations['jump_right']   = idle_frames[ROW_RIGHT]
+            self.animations['land_left']    = idle_frames[ROW_LEFT]
+            self.animations['land_right']   = idle_frames[ROW_RIGHT]
+
+        # 2. MORT
+        death_frames = slice_sheet("Slime1_Death_body.png", cols=10, rows=4)
+        if death_frames:
+            self.animations['death'] = death_frames[ROW_FRONT]
+
+        # SECURITE : Remplit avec un carré rose si jamais une animation manque
+        for state in self.animations:
+            if not self.animations[state]:
+                placeholder = pygame.Surface(SLIME_SIZE)
                 placeholder.fill((255, 0, 255))
                 self.animations[state].append(placeholder)
