@@ -68,6 +68,12 @@ class Menu:
         self.btn_mode_multi = self._btn(center_x, SCREEN_HEIGHT // 2 + 60,  450, 80)
         self.btn_back       = self._btn(center_x, SCREEN_HEIGHT // 2 + 250, 250, 60)
 
+        # ── Boutons sauvegardes ─────────────────────────────────────
+        self.btn_save_1     = self._btn(center_x, SCREEN_HEIGHT // 2 - 100, 400, 80)
+        self.btn_save_2     = self._btn(center_x, SCREEN_HEIGHT // 2 + 0,   400, 80)
+        self.btn_save_3     = self._btn(center_x, SCREEN_HEIGHT // 2 + 100, 400, 80)
+        self.btn_back_save  = self._btn(center_x, SCREEN_HEIGHT // 2 + 250, 250, 60)
+
         # ── Boutons lobby multi ─────────────────────────────────────
         self.btn_host       = self._btn(center_x, SCREEN_HEIGHT // 2 - 50,  400, 80)
         self.btn_join       = self._btn(center_x, SCREEN_HEIGHT // 2 + 70,  400, 80)
@@ -192,6 +198,14 @@ class Menu:
             self.draw_button(self.btn_mode_story, "MODE HISTOIRE", BLUE_MENU, BLUE_HOVER, mouse_pos)
             self.draw_button(self.btn_mode_multi, "MULTIJOUEUR",   BLUE_MENU, BLUE_HOVER, mouse_pos)
             self.draw_button(self.btn_back,       "RETOUR",        GREY,      WHITE,      mouse_pos)
+
+        # ── Sélection de sauvegarde ─────────────────────────────────
+        elif self.state == "save_selection":
+            self.draw_text("CHOISIR UNE SAUVEGARDE", self.titre_font, WHITE, cx, 250)
+            self.draw_button(self.btn_save_1, "SAUVEGARDE 1", BLUE_MENU, BLUE_HOVER, mouse_pos)
+            self.draw_button(self.btn_save_2, "SAUVEGARDE 2", BLUE_MENU, BLUE_HOVER, mouse_pos)
+            self.draw_button(self.btn_save_3, "SAUVEGARDE 3", BLUE_MENU, BLUE_HOVER, mouse_pos)
+            self.draw_button(self.btn_back_save, "RETOUR", GREY, WHITE, mouse_pos)
 
         # ── Paramètres ──────────────────────────────────────────────
         elif self.state == "settings":
@@ -387,9 +401,16 @@ class Menu:
 
             # ── mode_selection ──────────────────────────────────────
             elif self.state == "mode_selection":
-                if self.btn_mode_story.collidepoint(event.pos): return "play_story"
+                if self.btn_mode_story.collidepoint(event.pos): self.state = "save_selection"
                 if self.btn_mode_multi.collidepoint(event.pos): self.state = "multi_lobby"
                 if self.btn_back.collidepoint(event.pos):       self.state = "main"
+
+            # ── save_selection ──────────────────────────────────────
+            elif self.state == "save_selection":
+                if self.btn_save_1.collidepoint(event.pos): return "play_story"
+                if self.btn_save_2.collidepoint(event.pos): return "play_story"
+                if self.btn_save_3.collidepoint(event.pos): return "play_story"
+                if self.btn_back_save.collidepoint(event.pos): self.state = "mode_selection"
 
             # ── settings ────────────────────────────────────────────
             elif self.state == "settings":
