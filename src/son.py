@@ -28,31 +28,18 @@ class SoundManager:
 
         try:
             pygame.mixer.music.load(self.music_intro_path)
+            pygame.mixer.music.queue(self.music_boucle_path, loops=-1)
             pygame.mixer.music.set_volume(self.music_base_volume * self.global_volume)
-            pygame.mixer.music.play(0)  # 0 = joué une seule fois
+            pygame.mixer.music.play()  # 0 = joué une seule fois
             # On enregistre l'événement de fin de musique pour enchaîner sur la boucle
             pygame.mixer.music.set_endevent(pygame.USEREVENT + 1)
             self.music_intro_done = False
-        except pygame.error:
-            print("Musique intro introuvable.")
-            self.music_intro_done = True  # On passe directement à la boucle si l'intro est absente
-            self._play_boucle()
-
-    def _play_boucle(self):
-        """Charge et joue la musique en boucle après l'intro"""
-        try:
-            pygame.mixer.music.load(self.music_boucle_path)
-            pygame.mixer.music.set_volume(self.music_base_volume * self.global_volume)
-            pygame.mixer.music.play(-1)  # -1 pour jouer en boucle infinie
-        except pygame.error:
-            print("Musique boucle introuvable.")
+        except pygame.error as e:
+            print(f"Erreur musique : {e}")
 
     def update(self):
-        """À appeler dans la boucle principale du jeu pour détecter la fin de l'intro"""
-        if not self.music_intro_done:
-            for event in pygame.event.get(pygame.USEREVENT + 1):
-                self.music_intro_done = True
-                self._play_boucle()
+        pass
+                
 
     def load_sound(self, name, path, volume=0.5):
         """Charge un son avec sécurité si le fichier est manquant"""
@@ -87,5 +74,4 @@ class SoundManager:
         # Mise à jour de tous les bruitages en respectant leur mixage d'origine
         for name, sound_data in self.sounds.items():
             if sound_data and sound_data["sound"]:
-                nouveau_volume = sound_data["base_volume"] * self.global_volume
-                sound_data["sound"].set_volume(nouveau_volume)
+                sound_data["sound"].set_volume(sound_data["base_volume"] * self.global_volume)
