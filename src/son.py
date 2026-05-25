@@ -18,14 +18,41 @@ class SoundManager:
         self.load_sound("jump", os.path.join(ROOT_DIR, "assets/audio/boing.wav"), volume=0.2)
         self.load_sound("dash", os.path.join(ROOT_DIR, "assets/audio/dash.wav"), volume=0.3)
         self.load_sound("fireball", os.path.join(ROOT_DIR, "assets/audio/fireball.wav"), volume=0.4)
-        
-        # Chargement de la musique de fond
+
+        # Chemins des musiques de fond
+
+        self.music_intro_path = os.path.join(ROOT_DIR, "assets/audio/smile_fire_intro.mp3")
+        self.music_boucle_path = os.path.join(ROOT_DIR, "assets/audio/smile_fire_boucle.mp3")
+
+        # Chargement et lecture de l'intro
+
         try:
-            pygame.mixer.music.load(os.path.join(ROOT_DIR, "assets/audio/background_music.mp3"))
+            pygame.mixer.music.load(self.music_intro_path)
             pygame.mixer.music.set_volume(self.music_base_volume * self.global_volume)
-            pygame.mixer.music.play(-1) # -1 pour jouer en boucle
+            pygame.mixer.music.play(0)  # 0 = joué une seule fois
+            # On enregistre l'événement de fin de musique pour enchaîner sur la boucle
+            pygame.mixer.music.set_endevent(pygame.USEREVENT + 1)
+            self.music_intro_done = False
         except pygame.error:
-            print("Musique de fond introuvable.")
+            print("Musique intro introuvable.")
+            self.music_intro_done = True  # On passe directement à la boucle si l'intro est absente
+            self._play_boucle()
+
+    def _play_boucle(self):
+        """Charge et joue la musique en boucle après l'intro"""
+        try:
+            pygame.mixer.music.load(self.music_boucle_path)
+            pygame.mixer.music.set_volume(self.music_base_volume * self.global_volume)
+            pygame.mixer.music.play(-1)  # -1 pour jouer en boucle infinie
+        except pygame.error:
+            print("Musique boucle introuvable.")
+
+    def update(self):
+        """À appeler dans la boucle principale du jeu pour détecter la fin de l'intro"""
+        if not self.music_intro_done:
+            for event in pygame.event.get(pygame.USEREVENT + 1):
+                self.music_intro_done = True
+                self._play_boucle()
 
     def load_sound(self, name, path, volume=0.5):
         """Charge un son avec sécurité si le fichier est manquant"""
