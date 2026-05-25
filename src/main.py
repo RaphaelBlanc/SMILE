@@ -4,6 +4,7 @@ import pygame
 import sys
 import random
 import math
+import cv2
 from pytmx.util_pygame import load_pygame
 from player import Player
 from son import SoundManager
@@ -137,15 +138,99 @@ class RemotePlayer(pygame.sprite.Sprite):
         self.rect.y     = state.get("y",  self.rect.y)
         self.hp_current = state.get("hp", self.hp_current)
 
+#CLASS INTRO VIDEO##################################################################
+
+class IntroVideo:
+    """Joue la vidéo d'intro avec son au lancement, AVANT que le SoundManager démarre la musique."""
+
+    def __init__(self, screen, clock, video_path):
+        self.screen     = screen
+        self.clock      = clock
+        self.video_path = video_path
+
+    def play(self):
+        """Bloque jusqu'à la fin de la vidéo (ou si le joueur appuie sur ESPACE/ENTRÉE/ECHAP)."""
+        cap = cv2.VideoCapture(self.video_path)
+        if not cap.isOpened():
+            print(f"INTRO : impossible d'ouvrir {self.video_path}, on passe.")
+            return
+
+        fps_video = cap.get(cv2.CAP_PROP_FPS) or 30.0
+
+        # Extraire l'audio dans un fichier temporaire et le jouer
+        audio_path = None
+        try:
+            try:
+                from moviepy.editor import VideoFileClip   # moviepy 1.x
+            except ImportError:
+                from moviepy import VideoFileClip           # moviepy 2.x
+            import tempfile
+            clip = VideoFileClip(self.video_path)
+            if clip.audio is not None:
+                tmp = tempfile.NamedTemporaryFile(suffix=".ogg", delete=False)
+                audio_path = tmp.name
+                tmp.close()
+                clip.audio.write_audiofile(audio_path, logger=None)
+                pygame.mixer.music.stop()
+                pygame.mixer.music.load(audio_path)
+                pygame.mixer.music.play()
+            clip.close()
+        except Exception as e:
+            print(f"INTRO : audio non disponible ({e})")
+
+        running = True
+        while running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    cap.release()
+                    pygame.mixer.music.stop()
+                    pygame.quit()
+                    sys.exit()
+                if event.type == pygame.KEYDOWN and event.key in (
+                        pygame.K_ESCAPE, pygame.K_RETURN, pygame.K_SPACE):
+                    running = False
+
+            success, frame = cap.read()
+            if not success:
+                break
+
+            frame = cv2.resize(frame, (SCREEN_WIDTH, SCREEN_HEIGHT))
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frame = frame.transpose(1, 0, 2)
+            surf  = pygame.surfarray.make_surface(frame)
+            self.screen.blit(surf, (0, 0))
+
+            hint_font = pygame.font.SysFont("consolas", 22)
+            hint      = hint_font.render("ESPACE  pour passer", True, (200, 200, 200))
+            self.screen.blit(hint, (SCREEN_WIDTH - hint.get_width() - 24,
+                                    SCREEN_HEIGHT - hint.get_height() - 16))
+            pygame.display.flip()
+            self.clock.tick(fps_video)
+
+        cap.release()
+        pygame.mixer.music.stop()
+
+        # Supprimer le fichier audio temporaire
+        if audio_path:
+            try:
+                import os as _os
+                _os.remove(audio_path)
+            except Exception:
+                pass
+
 #CLASS GAME#########################################################################
 
 class Game:
 
-    def __init__(self):
-        pygame.init()
-        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-        pygame.display.set_caption("SMILE")
-        self.clock  = pygame.time.Clock()
+    def __init__(self, screen=None, clock=None):
+        if screen is None:
+            pygame.init()
+            self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+            pygame.display.set_caption("SMILE")
+            self.clock  = pygame.time.Clock()
+        else:
+            self.screen = screen
+            self.clock  = clock
 
         # Polices HUD
         self.font_hud   = pygame.font.SysFont("consolas", 18, bold=True)
@@ -690,5 +775,14 @@ class Game:
 #LANCEMENT DU JEU##########################################################################
 
 if __name__ == '__main__':
-    game = Game()
+    pygame.init()
+    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    pygame.display.set_caption("SMILE")
+    clock  = pygame.time.Clock()
+
+    intro_path = os.path.join(ROOT_DIR, "assets/video/videointro.mp4")
+    IntroVideo(screen, clock, intro_path).play()
+
+    game = Game(screen, clock)
+    game.sound_manager.start_music()
     game.run()
