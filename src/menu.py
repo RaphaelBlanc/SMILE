@@ -177,12 +177,14 @@ class Menu:
             if game_started:
                 self.draw_text("PAUSE",    self.titre_font, RED, cx, 320)
                 btn_text = "REPRENDRE"
+                btn_quit_text = "MENU PRINCIPAL"
             else:
                 self.draw_text("SMILE",    self.titre_font, RED, cx, 320)
                 btn_text = "JOUER"
+                btn_quit_text = "QUITTER"
             self.draw_button(self.btn_play,     btn_text,     BLUE_MENU, BLUE_HOVER, mouse_pos)
             self.draw_button(self.btn_settings, "PARAMETRES", BLUE_MENU, BLUE_HOVER, mouse_pos)
-            self.draw_button(self.btn_quit,     "QUITTER",    BLUE_MENU, (200, 0, 0), mouse_pos)
+            self.draw_button(self.btn_quit,     btn_quit_text,    BLUE_MENU, (200, 0, 0), mouse_pos)
 
         # ── Sélection de mode ───────────────────────────────────────
         elif self.state == "mode_selection":
