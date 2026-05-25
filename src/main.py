@@ -4,6 +4,7 @@ import pygame
 import sys
 import random
 import math
+import cv2
 from pytmx.util_pygame import load_pygame
 from player import Player
 from son import SoundManager
@@ -137,15 +138,99 @@ class RemotePlayer(pygame.sprite.Sprite):
         self.rect.y     = state.get("y",  self.rect.y)
         self.hp_current = state.get("hp", self.hp_current)
 
+#CLASS INTRO VIDEO##################################################################
+
+class IntroVideo:
+    """Joue la vidéo d'intro avec son au lancement, AVANT que le SoundManager démarre la musique."""
+
+    def __init__(self, screen, clock, video_path):
+        self.screen     = screen
+        self.clock      = clock
+        self.video_path = video_path
+
+    def play(self):
+        """Bloque jusqu'à la fin de la vidéo (ou si le joueur appuie sur ESPACE/ENTRÉE/ECHAP)."""
+        cap = cv2.VideoCapture(self.video_path)
+        if not cap.isOpened():
+            print(f"INTRO : impossible d'ouvrir {self.video_path}, on passe.")
+            return
+
+        fps_video = cap.get(cv2.CAP_PROP_FPS) or 30.0
+
+        # Extraire l'audio dans un fichier temporaire et le jouer
+        audio_path = None
+        try:
+            try:
+                from moviepy.editor import VideoFileClip   # moviepy 1.x
+            except ImportError:
+                from moviepy import VideoFileClip           # moviepy 2.x
+            import tempfile
+            clip = VideoFileClip(self.video_path)
+            if clip.audio is not None:
+                tmp = tempfile.NamedTemporaryFile(suffix=".ogg", delete=False)
+                audio_path = tmp.name
+                tmp.close()
+                clip.audio.write_audiofile(audio_path, logger=None)
+                pygame.mixer.music.stop()
+                pygame.mixer.music.load(audio_path)
+                pygame.mixer.music.play()
+            clip.close()
+        except Exception as e:
+            print(f"INTRO : audio non disponible ({e})")
+
+        running = True
+        while running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    cap.release()
+                    pygame.mixer.music.stop()
+                    pygame.quit()
+                    sys.exit()
+                if event.type == pygame.KEYDOWN and event.key in (
+                        pygame.K_ESCAPE, pygame.K_RETURN, pygame.K_SPACE):
+                    running = False
+
+            success, frame = cap.read()
+            if not success:
+                break
+
+            frame = cv2.resize(frame, (SCREEN_WIDTH, SCREEN_HEIGHT))
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frame = frame.transpose(1, 0, 2)
+            surf  = pygame.surfarray.make_surface(frame)
+            self.screen.blit(surf, (0, 0))
+
+            hint_font = pygame.font.SysFont("consolas", 22)
+            hint      = hint_font.render("ESPACE  pour passer", True, (200, 200, 200))
+            self.screen.blit(hint, (SCREEN_WIDTH - hint.get_width() - 24,
+                                    SCREEN_HEIGHT - hint.get_height() - 16))
+            pygame.display.flip()
+            self.clock.tick(fps_video)
+
+        cap.release()
+        pygame.mixer.music.stop()
+
+        # Supprimer le fichier audio temporaire
+        if audio_path:
+            try:
+                import os as _os
+                _os.remove(audio_path)
+            except Exception:
+                pass
+
 #CLASS GAME#########################################################################
 
 class Game:
 
-    def __init__(self):
-        pygame.init()
-        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-        pygame.display.set_caption("SMILE")
-        self.clock  = pygame.time.Clock()
+    def __init__(self, screen=None, clock=None):
+        if screen is None:
+            pygame.init()
+            self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+            pygame.display.set_caption("SMILE")
+            self.clock  = pygame.time.Clock()
+        else:
+            self.screen = screen
+            self.clock  = clock
 
         # Polices HUD
         self.font_hud   = pygame.font.SysFont("consolas", 18, bold=True)
@@ -162,6 +247,16 @@ class Game:
         # Screen-shake pour GolemPierre
         self.shake_ref = [0]
         self.mob_counter = 0
+
+        # --- GAME OVER ---
+        cx = SCREEN_WIDTH // 2
+        cy = SCREEN_HEIGHT // 2
+        self.btn_respawn        = pygame.Rect(0, 0, 320, 75)
+        self.btn_respawn.center = (cx - 200, cy + 80)
+        self.btn_gameover_menu        = pygame.Rect(0, 0, 320, 75)
+        self.btn_gameover_menu.center = (cx + 200, cy + 80)
+        self.respawn_point     = (200, 200)  # mis à jour au spawn / checkpoint
+        self.menu_input_blocked = 0          # frames où le menu ignore les clics
 
         # --- MODE MULTI ---
         self.network       = None          # Network() créé à la demande
@@ -238,6 +333,25 @@ class Game:
         # Joueur local
         self.player = Player(player_spawn, self.sound_manager, self.menu.keybinds)
         self.visibles_sprites.add(self.player)
+        self.respawn_point = player_spawn
+
+    # ── Respawn / Game Over ───────────────────────────────────────
+
+    def _respawn(self):
+        """Réinitialise le joueur au dernier point de respawn."""
+        self.player.rect.topleft = self.respawn_point
+        self.player.hp_current   = self.player.hp_max
+        self.player.vel_y        = 0
+        for ep in list(self.enemy_proj_sprites):
+            ep.kill()
+
+    def _go_to_main_menu(self):
+        """Retourne au menu principal."""
+        self._respawn()
+        self.is_paused    = True
+        self.game_started = False
+        self.menu.state   = "main"
+        self.menu_input_blocked = 10
 
     # ── Gestion réseau ────────────────────────────────────────────
 
@@ -357,6 +471,8 @@ class Game:
     # ── Update ────────────────────────────────────────────────────
 
     def update(self, dt):
+        if self.menu_input_blocked > 0:
+            self.menu_input_blocked -= 1
         if not self.is_paused:
             if self.is_multi and self.network:
                 # Initialise le timer de message si pas encore fait
@@ -550,11 +666,29 @@ class Game:
 
             if self.player.hp_current <= 0:
                 overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-                overlay.fill((0, 0, 0, 140))
+                overlay.fill((0, 0, 0, 180))
                 self.screen.blit(overlay, (0, 0))
+
                 txt = self.font_title.render("GAME OVER", True, RED)
                 self.screen.blit(txt, (SCREEN_WIDTH // 2 - txt.get_width() // 2,
-                                       SCREEN_HEIGHT // 2 - txt.get_height() // 2))
+                                       SCREEN_HEIGHT // 2 - 80))
+
+                mouse_pos = pygame.mouse.get_pos()
+                btn_font  = pygame.font.SysFont("consolas", 28, bold=True)
+
+                # Bouton RÉAPPARAITRE
+                color_r = (0, 160, 60) if self.btn_respawn.collidepoint(mouse_pos) else (0, 110, 40)
+                pygame.draw.rect(self.screen, color_r, self.btn_respawn, border_radius=14)
+                pygame.draw.rect(self.screen, WHITE,   self.btn_respawn, 3, border_radius=14)
+                lbl_r = btn_font.render("REAPPARAITRE", True, WHITE)
+                self.screen.blit(lbl_r, lbl_r.get_rect(center=self.btn_respawn.center))
+
+                # Bouton MENU
+                color_m = (0, 120, 210) if self.btn_gameover_menu.collidepoint(mouse_pos) else (0, 80, 160)
+                pygame.draw.rect(self.screen, color_m, self.btn_gameover_menu, border_radius=14)
+                pygame.draw.rect(self.screen, WHITE,   self.btn_gameover_menu, 3, border_radius=14)
+                lbl_m = btn_font.render("MENU", True, WHITE)
+                self.screen.blit(lbl_m, lbl_m.get_rect(center=self.btn_gameover_menu.center))
 
         pygame.display.flip()
 
@@ -574,7 +708,17 @@ class Game:
                         self.is_paused = not self.is_paused
                         self.menu.state = "main"
 
-                if self.is_paused:
+                # ── Boutons Game Over ────────────────────────────────
+                if (not self.is_paused
+                        and self.player.hp_current <= 0
+                        and event.type == pygame.MOUSEBUTTONDOWN
+                        and event.button == 1):
+                    if self.btn_respawn.collidepoint(event.pos):
+                        self._respawn()
+                    elif self.btn_gameover_menu.collidepoint(event.pos):
+                        self._go_to_main_menu()
+
+                if self.is_paused and self.menu_input_blocked == 0:
                     action = self.menu.handle_input(event, self.network)
 
                     # Slider volume — action est un tuple ("volume_changed", valeur)
@@ -629,5 +773,14 @@ class Game:
 #LANCEMENT DU JEU##########################################################################
 
 if __name__ == '__main__':
-    game = Game()
+    pygame.init()
+    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    pygame.display.set_caption("SMILE")
+    clock  = pygame.time.Clock()
+
+    intro_path = os.path.join(ROOT_DIR, "assets/video/videointro.mp4")
+    IntroVideo(screen, clock, intro_path).play()
+
+    game = Game(screen, clock)
+    game.sound_manager.start_music()
     game.run()
