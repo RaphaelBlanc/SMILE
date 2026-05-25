@@ -350,7 +350,7 @@ class Game:
         elif obj_type in ("EspritFeu", "EspritGlace", "EspritFoudre", "EspritNature"):
             mob = mob_class(pos, groups, vfx_groups=[self.vfx_sprites])
         else:
-            mob = mob_class(pos, groups)
+            mob = mob_class(pos, groups, sound_manager = self.sound_manager)
         mob.id = self.mob_counter
         self.mob_counter += 1
 

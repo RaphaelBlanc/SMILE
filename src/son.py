@@ -16,8 +16,11 @@ class SoundManager:
         
         # Chargement des effets sonores
         self.load_sound("jump", os.path.join(ROOT_DIR, "assets/audio/boing.wav"), volume=0.2)
-        self.load_sound("dash", os.path.join(ROOT_DIR, "assets/audio/dash.wav"), volume=0.3)
-        self.load_sound("fireball", os.path.join(ROOT_DIR, "assets/audio/fireball.wav"), volume=0.4)
+        self.load_sound("dash", os.path.join(ROOT_DIR, "assets/audio/dash.mp3"), volume=0.3)
+        self.load_sound("fireball", os.path.join(ROOT_DIR, "assets/audio/fireball.mp3"), volume=0.2)
+        self.load_sound("chien_detect", os.path.join(ROOT_DIR, "assets/audio/chien_detect.mp3"), volume=0.2)
+        self.load_sound("chien_attack", os.path.join(ROOT_DIR, "assets/audio/chien_attack.mp3"), volume=0.1)
+        self.load_sound("chien_death",  os.path.join(ROOT_DIR, "assets/audio/chien_death.mp3"),  volume=0.6)
 
         # Chemins des musiques de fond
 

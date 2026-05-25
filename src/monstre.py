@@ -167,6 +167,8 @@ class BaseEnemy(pygame.sprite.Sprite):
             self.on_death()
 
     def on_death(self):
+        if self.sound_manager:
+            self.sound_manager.play("chien_death")
         self.kill()
 
     def tick_contact_timer(self):
@@ -247,8 +249,9 @@ class ChienEnrage(BaseEnemy):
     ST_CHASE  = "chase"
     ST_SLIDE  = "slide"
 
-    def __init__(self, pos, groups):
+    def __init__(self, pos, groups, sound_manager=None):
         super().__init__(pos, hp=60, groups=groups, capacite_absorbable="dash")
+        self.sound_manager = sound_manager
         self.CONTACT_COOLDOWN = 80
 
         w, h = 48, 32
@@ -285,6 +288,8 @@ class ChienEnrage(BaseEnemy):
         if self.state in (self.ST_WANDER, self.ST_RETURN):
             if dist < self.DETECT_RANGE:
                 self.state = self.ST_CHASE
+                if self.sound_manager:
+                    self.sound_manager.play("chien_detect")
         elif self.state == self.ST_CHASE:
             player_above = player.rect.bottom < self.rect.top + 10
             if player_above and abs(player.rect.centerx - self.rect.centerx) < 60:
@@ -311,6 +316,8 @@ class ChienEnrage(BaseEnemy):
                 player.take_damage(self.ATTACK_DAMAGE)
                 self.attack_timer  = self.ATTACK_CD
                 self.contact_timer = self.CONTACT_COOLDOWN
+                if self.sound_manager:
+                    self.sound_manager.play("chien_attack")
 
     def _do_chase(self, player, obstacles):
         if self.turn_timer > 0:

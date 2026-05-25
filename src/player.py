@@ -49,6 +49,7 @@ class Player(pygame.sprite.Sprite):
         self.count_jump   = 0
         self.jump_pressed = False
         self.sound_manager = sound_manager
+        self.sprint_pressed = False
 
         # --- TOUCHES CONFIGURABLES ---
         self.keybinds = keybinds or {
@@ -141,8 +142,14 @@ class Player(pygame.sprite.Sprite):
         if keys[kb["sprint"]]:
             self.is_sprinting = True
             self.speed = 10
+            if not self.sprint_pressed:
+                self.sprint_pressed = True
+                self.capacite.dash(self._obstacles_ref, self.keybinds["dash"], force=True)
+                self.sound_manager.play("dash")
+
         else:
             self.is_sprinting = False
+            self.sprint_pressed = False
             self.speed = 6
 
         # DETECTION ECHELLE
@@ -215,6 +222,7 @@ class Player(pygame.sprite.Sprite):
     # -------------------------------------------------------------------------
 
     def update(self, obstacles, ladder_sprites, dt):
+        self._obstacles_ref = obstacles
         self.get_input(ladder_sprites)
         self.get_status()
 
@@ -262,7 +270,11 @@ class Player(pygame.sprite.Sprite):
             blink.set_alpha(80)
             self.image = blink
 
+        count_avant = len(self.capacite.projectiles)
         self.capacite.bdf(self.keybinds["attack"])
+        if len(self.capacite.projectiles) > count_avant:
+            self.sound_manager.play("fireball")
+
         self.capacite.projectiles.update(obstacles)
         self.capacite.dash(obstacles, self.keybinds["dash"])
 
