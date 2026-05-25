@@ -210,6 +210,22 @@ class IntroVideo:
         cap.release()
         pygame.mixer.music.stop()
 
+        # ── Fondu au noir depuis la dernière frame ───────────────────
+        fade = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        fade.fill((0, 0, 0))
+        last_surf = surf if 'surf' in locals() else fade
+        for alpha in range(0, 256, 5):
+            self.screen.blit(last_surf, (0, 0))
+            fade.set_alpha(alpha)
+            self.screen.blit(fade, (0, 0))
+            pygame.display.flip()
+            pygame.time.delay(16)
+
+        # Noir complet une fraction de seconde
+        self.screen.fill((0, 0, 0))
+        pygame.display.flip()
+        pygame.time.delay(200)
+
         # Supprimer le fichier audio temporaire
         if audio_path:
             try:
@@ -352,6 +368,20 @@ class Game:
         self.game_started = False
         self.menu.state   = "main"
         self.menu_input_blocked = 10
+
+    def fade_in(self, duration_ms=600):
+        """Fondu depuis le noir vers le contenu actuel."""
+        fade = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        fade.fill((0, 0, 0))
+        steps   = 40
+        delay   = duration_ms // steps
+        for i in range(steps + 1):
+            alpha = max(0, 255 - int(255 * i / steps))
+            self.draw(flip=False)
+            fade.set_alpha(alpha)
+            self.screen.blit(fade, (0, 0))
+            pygame.display.flip()
+            pygame.time.delay(delay)
 
     # ── Gestion réseau ────────────────────────────────────────────
 
@@ -603,7 +633,7 @@ class Game:
         lbl = self.font_small.render("P2", True, (0, 200, 255))
         self.screen.blit(lbl, (x - 30, y))
 
-    def draw(self):
+    def draw(self, flip=True):
         if self.is_paused:
             self.menu.draw(self.game_started, self.network)
         else:
@@ -690,7 +720,8 @@ class Game:
                 lbl_m = btn_font.render("MENU", True, WHITE)
                 self.screen.blit(lbl_m, lbl_m.get_rect(center=self.btn_gameover_menu.center))
 
-        pygame.display.flip()
+        if flip:
+            pygame.display.flip()
 
     # ── Boucle principale ─────────────────────────────────────────
 
@@ -783,4 +814,5 @@ if __name__ == '__main__':
 
     game = Game(screen, clock)
     game.sound_manager.start_music()
+    game.fade_in()
     game.run()
