@@ -210,6 +210,22 @@ class IntroVideo:
         cap.release()
         pygame.mixer.music.stop()
 
+        # ── Fondu au noir depuis la dernière frame ───────────────────
+        fade = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        fade.fill((0, 0, 0))
+        last_surf = surf if 'surf' in locals() else fade
+        for alpha in range(0, 256, 5):
+            self.screen.blit(last_surf, (0, 0))
+            fade.set_alpha(alpha)
+            self.screen.blit(fade, (0, 0))
+            pygame.display.flip()
+            pygame.time.delay(16)
+
+        # Noir complet une fraction de seconde
+        self.screen.fill((0, 0, 0))
+        pygame.display.flip()
+        pygame.time.delay(200)
+
         # Supprimer le fichier audio temporaire
         if audio_path:
             try:
@@ -249,6 +265,7 @@ class Game:
         self.mob_counter = 0
 
         # --- GAME OVER ---
+        self.death_time = None
         cx = SCREEN_WIDTH // 2
         cy = SCREEN_HEIGHT // 2
         self.btn_respawn = pygame.Rect(0, 0, 320, 75)
@@ -334,6 +351,20 @@ class Game:
         self.player = Player(player_spawn, self.sound_manager, self.menu.keybinds)
         self.visibles_sprites.add(self.player)
         self.respawn_point = player_spawn   # point de départ = premier respawn
+
+    def fade_in(self, duration_ms=600):
+        """Fondu depuis le noir vers le contenu actuel."""
+        fade = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        fade.fill((0, 0, 0))
+        steps   = 40
+        delay   = duration_ms // steps
+        for i in range(steps + 1):
+            alpha = max(0, 255 - int(255 * i / steps))
+            self.draw(flip=False)
+            fade.set_alpha(alpha)
+            self.screen.blit(fade, (0, 0))
+            pygame.display.flip()
+            pygame.time.delay(delay)
 
     # ── Gestion réseau ────────────────────────────────────────────
 
@@ -454,6 +485,7 @@ class Game:
 
     def _respawn(self):
         """Réinitialise le joueur au dernier point de respawn."""
+        self.death_time = None
         self.player.rect.topleft = self.respawn_point
         self.player.hp_current   = self.player.hp_max
         self.player.vel_y        = 0
@@ -604,7 +636,7 @@ class Game:
         lbl = self.font_small.render("P2", True, (0, 200, 255))
         self.screen.blit(lbl, (x - 30, y))
 
-    def draw(self):
+    def draw(self, flip=True):
         if self.is_paused:
             self.menu.draw(self.game_started, self.network)
         else:
@@ -666,33 +698,47 @@ class Game:
             self.screen.blit(score_txt, (SCREEN_WIDTH - score_txt.get_width() - 20, 20))
 
             if self.player.hp_current <= 0:
-                overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-                overlay.fill((0, 0, 0, 180))
-                self.screen.blit(overlay, (0, 0))
+                if self.death_time is None:
+                    self.death_time = pygame.time.get_ticks()
+                
+                time_since_death = pygame.time.get_ticks() - self.death_time
+                if time_since_death >= 1000:
+                    progress = min(1.0, (time_since_death - 1000) / 1000.0)
+                    
+                    overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+                    overlay.fill((0, 0, 0, int(180 * progress)))
+                    self.screen.blit(overlay, (0, 0))
 
-                # Titre GAME OVER
-                txt = self.font_title.render("GAME OVER", True, RED)
-                self.screen.blit(txt, (SCREEN_WIDTH // 2 - txt.get_width() // 2,
-                                       SCREEN_HEIGHT // 2 - 80))
+                    txt = self.font_title.render("GAME OVER", True, RED)
+                    txt.set_alpha(int(255 * progress))
+                    self.screen.blit(txt, (SCREEN_WIDTH // 2 - txt.get_width() // 2,
+                                           SCREEN_HEIGHT // 2 - 80))
 
-                mouse_pos = pygame.mouse.get_pos()
-                btn_font  = pygame.font.SysFont("consolas", 28, bold=True)
+                    mouse_pos = pygame.mouse.get_pos()
+                    btn_font  = pygame.font.SysFont("consolas", 28, bold=True)
 
-                # Bouton RÉAPPARAITRE
-                color_r = (0, 160, 60) if self.btn_respawn.collidepoint(mouse_pos) else (0, 110, 40)
-                pygame.draw.rect(self.screen, color_r, self.btn_respawn, border_radius=14)
-                pygame.draw.rect(self.screen, WHITE,   self.btn_respawn, 3, border_radius=14)
-                lbl_r = btn_font.render("REAPPARAITRE", True, WHITE)
-                self.screen.blit(lbl_r, lbl_r.get_rect(center=self.btn_respawn.center))
+                    # Bouton RÉAPPARAITRE
+                    btn_surf_r = pygame.Surface((self.btn_respawn.width, self.btn_respawn.height), pygame.SRCALPHA)
+                    color_r = (0, 160, 60, int(255 * progress)) if self.btn_respawn.collidepoint(mouse_pos) else (0, 110, 40, int(255 * progress))
+                    pygame.draw.rect(btn_surf_r, color_r, btn_surf_r.get_rect(), border_radius=14)
+                    pygame.draw.rect(btn_surf_r, (*WHITE, int(255 * progress)), btn_surf_r.get_rect(), 3, border_radius=14)
+                    lbl_r = btn_font.render("REAPPARAITRE", True, WHITE)
+                    lbl_r.set_alpha(int(255 * progress))
+                    btn_surf_r.blit(lbl_r, lbl_r.get_rect(center=btn_surf_r.get_rect().center))
+                    self.screen.blit(btn_surf_r, self.btn_respawn.topleft)
 
-                # Bouton MENU
-                color_m = (0, 120, 210) if self.btn_gameover_menu.collidepoint(mouse_pos) else (0, 80, 160)
-                pygame.draw.rect(self.screen, color_m, self.btn_gameover_menu, border_radius=14)
-                pygame.draw.rect(self.screen, WHITE,   self.btn_gameover_menu, 3, border_radius=14)
-                lbl_m = btn_font.render("MENU", True, WHITE)
-                self.screen.blit(lbl_m, lbl_m.get_rect(center=self.btn_gameover_menu.center))
+                    # Bouton MENU
+                    btn_surf_m = pygame.Surface((self.btn_gameover_menu.width, self.btn_gameover_menu.height), pygame.SRCALPHA)
+                    color_m = (0, 120, 210, int(255 * progress)) if self.btn_gameover_menu.collidepoint(mouse_pos) else (0, 80, 160, int(255 * progress))
+                    pygame.draw.rect(btn_surf_m, color_m, btn_surf_m.get_rect(), border_radius=14)
+                    pygame.draw.rect(btn_surf_m, (*WHITE, int(255 * progress)), btn_surf_m.get_rect(), 3, border_radius=14)
+                    lbl_m = btn_font.render("MENU", True, WHITE)
+                    lbl_m.set_alpha(int(255 * progress))
+                    btn_surf_m.blit(lbl_m, lbl_m.get_rect(center=btn_surf_m.get_rect().center))
+                    self.screen.blit(btn_surf_m, self.btn_gameover_menu.topleft)
 
-        pygame.display.flip()
+        if flip:
+            pygame.display.flip()
 
     # ── Boucle principale ─────────────────────────────────────────
 
@@ -713,6 +759,8 @@ class Game:
                 # ── Boutons Game Over ───────────────────────────────
                 if (not self.is_paused
                         and self.player.hp_current <= 0
+                        and self.death_time is not None
+                        and pygame.time.get_ticks() - self.death_time >= 2000
                         and event.type == pygame.MOUSEBUTTONDOWN
                         and event.button == 1):
                     if self.btn_respawn.collidepoint(event.pos):
@@ -785,4 +833,5 @@ if __name__ == '__main__':
 
     game = Game(screen, clock)
     game.sound_manager.start_music()
+    game.fade_in()
     game.run()
