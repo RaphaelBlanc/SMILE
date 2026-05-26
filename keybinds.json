@@ -1,0 +1,10 @@
+{
+    "move_left": 113,
+    "move_right": 100,
+    "move_up": 122,
+    "move_down": 115,
+    "jump": 32,
+    "sprint": 1073742049,
+    "attack": 102,
+    "dash": 118
+}
