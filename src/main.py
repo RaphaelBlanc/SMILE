@@ -441,7 +441,7 @@ class Game:
                 elif obj_type_lower in ('spawn_from_boss', 'spawn_form_boss'):
                     self.spawn_from_boss_point = pos
                 elif obj_type_lower == 'spawn_from_glace':
-                    self.spawn_from_glace_point = (pos[0] - 150, pos[1])
+                    self.spawn_from_glace_point = pos
                 elif obj_type_lower == 'spawn_from_haut':
                     player_spawn = pos
                 elif obj_type_lower == 'spawn_from_lave':
@@ -529,10 +529,9 @@ class Game:
             tp_pos = (self.spawn_porte_glace_point[0] - 50, self.spawn_porte_glace_point[1])
             self.player.set_position(tp_pos)
             self.respawn_point = tp_pos
-        elif getattr(self, 'coming_from_teleport_lave', False) and getattr(self, 'spawn_porte_to_glace_point', None):
-            tp_pos = (self.spawn_porte_to_glace_point[0] - 50, self.spawn_porte_to_glace_point[1])
-            self.player.set_position(tp_pos)
-            self.respawn_point = tp_pos
+        elif getattr(self, 'coming_from_teleport_lave', False) and getattr(self, 'spawn_from_glace_point', None):
+            self.player.set_position(self.spawn_from_glace_point)
+            self.respawn_point = self.spawn_from_glace_point
         else:
             self.player.set_position(player_spawn)
             self.respawn_point = player_spawn
