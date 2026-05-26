@@ -525,13 +525,14 @@ class Game:
         elif self.coming_from_lave and self.spawn_from_lave_point:
             self.player.set_position(self.spawn_from_lave_point)
             self.respawn_point = self.spawn_from_lave_point
-        elif self.coming_from_teleport and self.spawn_porte_glace_point:
-            tp_pos = (self.spawn_porte_glace_point[0] - 50, self.spawn_porte_glace_point[1])
+        elif self.coming_from_teleport and getattr(self, 'spawn_porte_glace_point', None):
+            tp_pos = (self.spawn_porte_glace_point[0] - 50, self.spawn_porte_glace_point[1] - 150)
             self.player.set_position(tp_pos)
             self.respawn_point = tp_pos
-        elif getattr(self, 'coming_from_teleport_lave', False) and getattr(self, 'spawn_from_glace_point', None):
-            self.player.set_position(self.spawn_from_glace_point)
-            self.respawn_point = self.spawn_from_glace_point
+        elif getattr(self, 'coming_from_teleport_lave', False) and getattr(self, 'spawn_porte_to_glace_point', None):
+            safe_pos = (self.spawn_porte_to_glace_point[0] - 100, self.spawn_porte_to_glace_point[1] - 150)
+            self.player.set_position(safe_pos)
+            self.respawn_point = safe_pos
         else:
             self.player.set_position(player_spawn)
             self.respawn_point = player_spawn
