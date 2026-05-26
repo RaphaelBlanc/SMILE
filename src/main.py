@@ -595,15 +595,20 @@ class Game:
                     else:
                         msg = "La porte est fermée...|Il faut d'abord vaincre le boss de glace."
                     NPC(pos, msg, [self.visibles_sprites, self.npc_sprites], name=getattr(obj, 'name', None), pnj_type=obj_type_lower)
+                elif obj_type_lower == 'mage':
+                    msg = "Salutations, aventurier.|Bienvenue dans la zone magique."
+                    NPC(pos, msg, [self.visibles_sprites, self.npc_sprites], name=getattr(obj, 'name', None), pnj_type=obj_type_lower)
+                elif obj_type_lower == 'spawndepuisglace':
+                    self.spawn_depuis_glace_point = pos
                 elif obj_type_lower == 'npc':
                     msg = obj.properties.get('message', 'Bonjour !')
                     NPC(pos, msg, [self.visibles_sprites, self.npc_sprites], name=getattr(obj, 'name', None), pnj_type=obj_type_lower)
-                elif obj_type_lower in ('portetolave', 'porte_to_lave', 'portebossglace', 'porteglace', 'porte_to_glace', 'porte_to_zone_1', 'porte_to zone_1', 'porte_boss_lave'):
+                elif obj_type_lower in ('portetolave', 'porte_to_lave', 'portebossglace', 'porteglace', 'porte_to_glace', 'porte_to_zone_1', 'porte_to zone_1', 'porte_boss_lave', 'porteversglace', 'porteversmage'):
                     if obj_type_lower in ('portetolave', 'porte_to_lave'):
                         dest = 'assets/maps/ZoneLave.tmx'
                     elif obj_type_lower == 'portebossglace':
                         dest = 'assets/maps/map_boss_glace.tmx'
-                    elif obj_type_lower == 'porte_to_glace':
+                    elif obj_type_lower in ('porte_to_glace', 'porteversglace'):
                         dest = 'assets/maps/map_glace.tmx'
                         self.spawn_porte_to_glace_point = pos
                     elif obj_type_lower == 'porteglace':
@@ -612,6 +617,8 @@ class Game:
                         dest = 'assets/maps/Zone1.tmx'
                     elif obj_type_lower == 'porte_boss_lave':
                         dest = 'assets/maps/BossLave.tmx'
+                    elif obj_type_lower == 'porteversmage':
+                        dest = 'assets/maps/ZoneMage.tmx'
                     else:
                         dest = 'assets/maps/map_finale.tmx'
                     
@@ -657,10 +664,14 @@ class Game:
             self.last_transition_flag = "boss"
             self.player.set_position(self.spawn_from_boss_point)
             self.respawn_point = self.spawn_from_boss_point
-        elif self.coming_from_glace and self.spawn_from_glace_point:
+        elif self.coming_from_glace and hasattr(self, 'spawn_from_glace_point'):
             self.last_transition_flag = "glace"
             self.player.set_position(self.spawn_from_glace_point)
             self.respawn_point = self.spawn_from_glace_point
+        elif self.coming_from_glace and getattr(self, 'spawn_depuis_glace_point', None):
+            self.last_transition_flag = "glace"
+            self.player.set_position(self.spawn_depuis_glace_point)
+            self.respawn_point = self.spawn_depuis_glace_point
         elif self.coming_from_lave and self.spawn_from_lave_point:
             self.last_transition_flag = "lave"
             self.player.set_position(self.spawn_from_lave_point)
