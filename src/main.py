@@ -524,7 +524,7 @@ class Game:
         elif self.coming_from_lave and self.spawn_from_lave_point:
             self.player.set_position(self.spawn_from_lave_point)
             self.respawn_point = self.spawn_from_lave_point
-        elif self.coming_from_teleport and hasattr(self, 'spawn_porte_glace_point'):
+        elif self.coming_from_teleport and self.spawn_porte_glace_point:
             tp_pos = (self.spawn_porte_glace_point[0] - 50, self.spawn_porte_glace_point[1])
             self.player.set_position(tp_pos)
             self.respawn_point = tp_pos
