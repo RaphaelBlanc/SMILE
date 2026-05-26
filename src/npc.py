@@ -98,9 +98,12 @@ class NPC(pygame.sprite.Sprite):
         path = path_option1 if os.path.isfile(path_option1) else path_option2
         
         if sprite_filename == "geant_de_glace.png":
-            target_size = (96, 120)
+            orig_size = (96, 120)
         else:
-            target_size = (64, 88)
+            orig_size = (64, 88)
+            
+        SCALE_FACTOR = 1.8
+        target_size = (int(orig_size[0] * SCALE_FACTOR), int(orig_size[1] * SCALE_FACTOR))
             
         if os.path.isfile(path):
             try:
@@ -114,10 +117,13 @@ class NPC(pygame.sprite.Sprite):
             self.image = pygame.Surface(target_size)
             self.image.fill((0, 0, 255))
             
-        self.rect = self.image.get_rect(topleft=pos)
+        # Aligne le bas-centre du sprite agrandi avec la hitbox initiale pour éviter de flotter ou s'enfoncer
+        orig_rect = pygame.Rect(pos[0], pos[1], orig_size[0], orig_size[1])
+        self.rect = self.image.get_rect()
+        self.rect.midbottom = orig_rect.midbottom
         
         self.set_message(message)
-        self.detection_radius = 150
+        self.detection_radius = 200
         self.player_in_range = False
         self.is_interacting = False
         self.on_end_callback = on_end_callback

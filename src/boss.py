@@ -16,6 +16,7 @@ RÉGLAGES : chaque boss possède son propre dict TUNING en tête de classe.
 import pygame
 import math
 import random
+from config import ROOT_DIR
 
 # ── Physique globale ──────────────────────────────────────────────────────────
 GRAVITY       = 0.8
@@ -278,9 +279,12 @@ class BossBase(pygame.sprite.Sprite):
 
     def __init__(self, pos, room_obstacles, floor_y):
         super().__init__()
+        self.id           = -1
+        self.dead         = False
         self.hp           = self.HP_MAX
         self.phase        = 1
         self.alive        = True
+        self.death_finished = True
         self.floor_y      = floor_y
         self.obstacles    = room_obstacles
         self.vy           = 0.0
@@ -405,11 +409,39 @@ class BossBase(pygame.sprite.Sprite):
     # ── Dégâts ────────────────────────────────────────────────────────────────
     def take_damage(self, amount):
         self.hp = max(0, self.hp - amount)
-        if self.hp == 0: self.alive = False
+        if self.hp == 0:
+            self.alive = False
+            self.dead = True
+
+    @property
+    def hp_current(self):
+        return self.hp
+
+    @hp_current.setter
+    def hp_current(self, value):
+        self.hp = value
+        if self.hp <= 0:
+            self.alive = False
+            self.dead = True
+
+    @property
+    def hp_max(self):
+        return self.HP_MAX
+
+    @hp_max.setter
+    def hp_max(self, value):
+        self.HP_MAX = value
 
     # ── Update commun ─────────────────────────────────────────────────────────
     def update(self, player_rect, dt):
-        if not self.alive: return
+        if not self.alive:
+            if getattr(self, "death_finished", True):
+                return
+            dt_ms = dt * 1000
+            self._apply_gravity()
+            self._move_and_collide()
+            self._update_visual(dt_ms)
+            return
         dt_ms = dt * 1000
         self._screen_shake_flag = False
         self._update_phase()
@@ -510,8 +542,8 @@ class BossBase(pygame.sprite.Sprite):
 class Pyros(BossBase):
     NAME     = "PYROS"
     HP_MAX   = 400
-    WIDTH    = 160
-    HEIGHT   = 220
+    WIDTH    = 576
+    HEIGHT   = 320
     THEME_PROJ   = (255, 100, 20)
     THEME_SHOCK  = ORANGE
     THEME_BG_TOP = (18,  2,  2)
@@ -541,6 +573,7 @@ class Pyros(BossBase):
 
     def __init__(self, pos, obstacles, floor_y):
         super().__init__(pos, obstacles, floor_y)
+        self.death_finished = False
         self._slam_landed = False
         self._slam_warned = False
         self._slam_warning= None
@@ -554,57 +587,104 @@ class Pyros(BossBase):
         self._meteor_n    = 0
         self._meteor_t    = 0
         self._rush_dir    = 1
-        self.images = {s: self._draw(s)
-                       for s in ["idle","windup","attack","enrage"]}
-        self.image  = self.images["idle"]
-        self.rect   = self.image.get_rect(topleft=pos)
+        
+        self.anim_idx = 0
+        self.anim_timer = 0
+        self.current_anim_key = "idle"
+        self._load_sprites()
+        self.image = self.animations["idle"][0]
+        self.rect  = self.image.get_rect(topleft=pos)
 
-    def _draw(self, state):
-        W, H  = self.WIDTH, self.HEIGHT
-        surf  = pygame.Surface((W, H), pygame.SRCALPHA)
-        body  = {"idle":(80,20,120),"windup":(140,50,10),
-                 "attack":(210,25,5),"enrage":(190,0,0)}[state]
-        dark  = tuple(max(0,c-50) for c in body)
-        eye   = YELLOW if state != "enrage" else (255,60,0)
-        # Jambes
-        for lx in [12, W-57]:
-            pygame.draw.rect(surf, dark, (lx,H-72,44,72), border_radius=10)
-            pygame.draw.rect(surf, (60,40,20),(lx+2,H-20,40,20), border_radius=5)
-        # Torse
-        pygame.draw.ellipse(surf, body, (4,H//3,W-8,H*2//3))
-        for sx in [14,W-14]:
-            pygame.draw.circle(surf, body, (sx,H//3+18),30)
-        arm = tuple(max(0,c-30) for c in body)
-        pygame.draw.rect(surf, arm, (-2,H//3+28,30,65), border_radius=12)
-        pygame.draw.rect(surf, arm, (W-28,H//3+28,30,65), border_radius=12)
-        pygame.draw.circle(surf, BROWN, (13,H//3+98),20)
-        pygame.draw.circle(surf, BROWN, (W-13,H//3+98),20)
-        # Carapace
-        shell=[(W//2,H//3-8),(W//2-52,H//3+55),(W//2-32,H//3+118),
-               (W//2+32,H//3+118),(W//2+52,H//3+55)]
-        pygame.draw.polygon(surf,(10,130,15),shell)
-        pygame.draw.polygon(surf,(5,80,10),shell,4)
-        for dx,dy in [(-20,40),(20,40),(0,75),(-18,90),(18,90)]:
-            cx,cy=W//2+dx,H//3+dy
-            pts=[(cx+9*math.cos(math.radians(a*60)),cy+9*math.sin(math.radians(a*60)))
-                 for a in range(6)]
-            pygame.draw.polygon(surf,(8,100,12),pts,2)
-        # Tête
-        pygame.draw.ellipse(surf,body,(14,8,W-28,H//3))
-        for pts in [[(24,30),(8,-24),(44,18)],[(W-24,30),(W-8,-24),(W-44,18)]]:
-            pygame.draw.polygon(surf,DARK_RED,pts)
-        for ex in [30,W-62]:
-            pygame.draw.ellipse(surf,eye,(ex,32,34,24))
-        for px in [47,W-47]:
-            pygame.draw.circle(surf,BLACK,(px,44),9)
-            pygame.draw.circle(surf,WHITE,(px-3,40),3)
-        pygame.draw.arc(surf,DARK_RED,(28,55,W-56,22),math.pi,2*math.pi,5)
-        for fx2,fw,fh in [(52,11,17),(73,11,20),(W-63,11,17),(W-84,11,20)]:
-            pygame.draw.rect(surf,WHITE,(fx2,59,fw,fh),border_radius=3)
-        if state in ("windup","attack","enrage"):
-            pygame.draw.line(surf,BLACK,(28,30),(58,36),5)
-            pygame.draw.line(surf,BLACK,(W-28,30),(W-58,36),5)
-        return surf
+    def _load_sprites(self):
+        import os
+        base_path = os.path.join(ROOT_DIR, 'assets', 'images', 'monstre', 'boss_feu', 'individual sprites')
+        
+        def load_seq(folder_name, prefix):
+            frames = []
+            dir_path = os.path.join(base_path, folder_name)
+            
+            if not os.path.exists(dir_path):
+                s = pygame.Surface((self.WIDTH, self.HEIGHT), pygame.SRCALPHA)
+                return [s]
+                
+            files = [f for f in os.listdir(dir_path) if f.endswith('.png')]
+            for i in range(1, len(files) + 1):
+                path = os.path.join(dir_path, f"{prefix}_{i}.png")
+                if os.path.exists(path):
+                    try:
+                        surf = pygame.image.load(path).convert_alpha()
+                        surf = pygame.transform.scale(surf, (self.WIDTH, self.HEIGHT))
+                        frames.append(surf)
+                    except Exception:
+                        pass
+            if not frames:
+                s = pygame.Surface((self.WIDTH, self.HEIGHT), pygame.SRCALPHA)
+                return [s]
+            return frames
+
+        self.animations = {}
+        self.animations["idle"] = load_seq("01_demon_idle", "demon_idle")
+        self.animations["walk"] = load_seq("02_demon_walk", "demon_walk")
+        
+        cleave = load_seq("03_demon_cleave", "demon_cleave")
+        self.animations["groundslam"]  = cleave
+        self.animations["fireline"]    = cleave
+        self.animations["firewall"]    = cleave
+        self.animations["grab_walk"]   = cleave
+        self.animations["meteor"]      = cleave
+        self.animations["enrage_rush"] = cleave
+        
+        self.animations["dead"]        = load_seq("05_demon_death", "demon_death")
+        self.animations["hurt"]        = load_seq("04_demon_take_hit", "demon_take_hit")
+
+    def _update_visual(self, dt_ms):
+        anim_key = "idle"
+        if not self.alive:
+            anim_key = "dead"
+        elif getattr(self, 'attack_state', 0) in (WINDUP, EXECUTING):
+            anim_key = self.attack_name
+        elif self.vx != 0:
+            anim_key = "walk"
+            
+        if anim_key not in self.animations:
+            anim_key = "idle"
+            
+        if self.current_anim_key != anim_key:
+            self.current_anim_key = anim_key
+            self.anim_idx = 0
+            self.anim_timer = 0
+            
+        frames = self.animations[anim_key]
+        if self.anim_idx >= len(frames):
+            self.anim_idx = 0
+            
+        fps = 10
+        if anim_key in ["groundslam", "fireline", "firewall", "grab_walk", "meteor", "enrage_rush"]:
+            fps = 15
+            
+        if getattr(self, 'attack_state', 0) == WINDUP:
+            self.anim_idx = 0
+        else:
+            self.anim_timer += dt_ms
+            if self.anim_timer >= 1000 / fps:
+                self.anim_timer = 0
+                self.anim_idx += 1
+                if self.anim_idx >= len(frames):
+                    if anim_key == "dead":
+                        self.anim_idx = len(frames) - 1
+                        self.death_finished = True
+                    else:
+                        self.anim_idx = 0
+                        
+        base = frames[self.anim_idx].copy()
+        
+        if self.phase == 3 and hasattr(self, '_draw_aura'):
+            base = self._draw_aura(base, dt_ms)
+            
+        if not self.facing_right:
+            base = pygame.transform.flip(base, True, False)
+            
+        self.image = base
 
     def _draw_aura(self, base, dt_ms):
         self._aura_tick += dt_ms
@@ -616,6 +696,7 @@ class Pyros(BossBase):
         old = self.rect.center
         self.rect = combo.get_rect(center=old)
         return combo
+
 
     def _get_attack_pool(self):
         return {1:["groundslam","fireline"],
@@ -798,7 +879,7 @@ class Glacius(BossBase):
 
     def _load_sprites(self):
         import os
-        base_path = './assets/images/monstre/boss_glace'
+        base_path = os.path.join(ROOT_DIR, 'assets', 'images', 'monstre', 'boss_glace')
         
         def load_seq(folder_name, prefix):
             frames = []

@@ -41,8 +41,10 @@ TARGET_SIZE = (64, 64)
 
 class Player(pygame.sprite.Sprite):
 
-    def __init__(self, pos, sound_manager, keybinds=None):
+    def __init__(self, pos, sound_manager, keybinds=None, player_num=1):
         super().__init__()
+        self.player_num = player_num
+        
         
         # --- TOUCHES CONFIGURABLES ---
         self.keybinds = keybinds or {
@@ -71,6 +73,7 @@ class Player(pygame.sprite.Sprite):
 
         # --- CAPACITES ---
         self.capacite = Capacite(self)
+        self.input_locked = False
 
         # --- VIE ---
         self.hp_max            = HP_MAX
@@ -147,7 +150,12 @@ class Player(pygame.sprite.Sprite):
     # -------------------------------------------------------------------------
 
     def get_input(self, ladder_sprites):
-        keys = pygame.key.get_pressed()
+        if getattr(self, 'input_locked', False):
+            class EmptyKeys:
+                def __getitem__(self, item): return False
+            keys = EmptyKeys()
+        else:
+            keys = pygame.key.get_pressed()
         kb   = self.keybinds
 
         if keys[kb["sprint"]]:
@@ -209,7 +217,12 @@ class Player(pygame.sprite.Sprite):
             self.direction.y = 16
 
     def apply_ladder_physics(self):
-        keys = pygame.key.get_pressed()
+        if getattr(self, 'input_locked', False):
+            class EmptyKeys:
+                def __getitem__(self, item): return False
+            keys = EmptyKeys()
+        else:
+            keys = pygame.key.get_pressed()
         if keys[self.keybinds["move_up"]]:
             self.direction.y = -LADDER_CLIMB_SPEED
         elif keys[self.keybinds["move_down"]]:
@@ -223,25 +236,45 @@ class Player(pygame.sprite.Sprite):
 
     def update(self, obstacles, ladder_sprites, dt):
         
-        self.get_input(ladder_sprites)
-        self.get_status()
+        if self.hp_current <= 0:
+            self.status = 'death'
+            self.direction.x = 0
+            self.apply_gravity()
+            self.move(obstacles, ladder_sprites)
+            self.capacite.projectiles.update(obstacles)
+        else:
+            self.get_input(ladder_sprites)
+            self.get_status()
 
-        # Timers
-        if self.hurt_timer > 0: self.hurt_timer -= 1
-        if self.slow_timer > 0: self.slow_timer -= 1
-        else: self.slow_factor = 1.0
+            # Timers
+            if self.hurt_timer > 0: self.hurt_timer -= 1
+            if self.slow_timer > 0: self.slow_timer -= 1
+            else: self.slow_factor = 1.0
 
-        if self.burn_timer > 0:
-            self.burn_timer -= 1
-            if self.burn_timer % 60 == 0:
-                self.hp_current = max(0, self.hp_current - int(self.burn_dps))
+            if self.burn_timer > 0:
+                self.burn_timer -= 1
+                if self.burn_timer % 60 == 0:
+                    self.hp_current = max(0, self.hp_current - int(self.burn_dps))
 
-        if self.is_poisoned and self.poison_timer > 0:
-            self.poison_timer -= 1
-            if self.poison_timer % 60 == 0:
-                self.hp_current = max(0, self.hp_current - int(self.poison_dps))
-            if self.poison_timer <= 0:
-                self.is_poisoned = False
+            if self.is_poisoned and self.poison_timer > 0:
+                self.poison_timer -= 1
+                if self.poison_timer % 60 == 0:
+                    self.hp_current = max(0, self.hp_current - int(self.poison_dps))
+                if self.poison_timer <= 0:
+                    self.is_poisoned = False
+
+            # Capacités et Projectiles
+            self.capacite.bdf(self.keybinds["attack"])
+            self.capacite.dash(obstacles, self.keybinds["dash"])
+            self.capacite.projectiles.update(obstacles)
+
+            if self.on_ladder:
+                self.apply_ladder_physics()
+            else:
+                self.apply_gravity()
+
+            # Mouvement et Alignement de l'image
+            self.move(obstacles, ladder_sprites)
 
         # Animation Vitesse
         if self.status and 'sprint' in self.status:
@@ -251,26 +284,14 @@ class Player(pygame.sprite.Sprite):
         else:
             self.animator.animation_speed = 0.15
 
-        self.image = self.animator.get_current_frame(dt, self.status)
+        loop = (self.status != 'death')
+        self.image = self.animator.get_current_frame(dt, self.status, loop=loop)
 
         # Clignotement degats
         if self.hurt_timer > 0 and (self.hurt_timer // 6) % 2 == 0:
             blink = self.image.copy()
             blink.set_alpha(80)
             self.image = blink
-
-        # Capacités et Projectiles
-        self.capacite.bdf(self.keybinds["attack"])
-        self.capacite.dash(obstacles, self.keybinds["dash"])
-        self.capacite.projectiles.update(obstacles)
-
-        if self.on_ladder:
-            self.apply_ladder_physics()
-        else:
-            self.apply_gravity()
-
-        # Mouvement et Alignement de l'image
-        self.move(obstacles, ladder_sprites)
 
     # -------------------------------------------------------------------------
     # MOUVEMENT & COLLISION (Utilise la Hitbox)
@@ -305,7 +326,12 @@ class Player(pygame.sprite.Sprite):
         hits = list(pygame.sprite.spritecollide(self, obstacles, False))
         
         # Plateformes "One-way" pour les échelles (marcher dessus sans tomber)
-        keys = pygame.key.get_pressed()
+        if getattr(self, 'input_locked', False):
+            class EmptyKeys:
+                def __getitem__(self, item): return False
+            keys = EmptyKeys()
+        else:
+            keys = pygame.key.get_pressed()
         pressing_down = keys[self.keybinds["move_down"]]
         
         if ladder_sprites and direction == 'vertical' and self.direction.y > 0 and not pressing_down:
@@ -350,7 +376,16 @@ class Player(pygame.sprite.Sprite):
     # -------------------------------------------------------------------------
 
     def get_status(self):
-        keys = pygame.key.get_pressed()
+        if self.hp_current <= 0:
+            self.status = 'death'
+            return
+
+        if getattr(self, 'input_locked', False):
+            class EmptyKeys:
+                def __getitem__(self, item): return False
+            keys = EmptyKeys()
+        else:
+            keys = pygame.key.get_pressed()
         kb   = self.keybinds
 
         if keys[kb["move_up"]]:
@@ -391,10 +426,18 @@ class Player(pygame.sprite.Sprite):
             'sprint_right', 'sprint_left', 'jump_right', 'jump_left', 
             'land_right', 'land_left', 'death', 'back', 'front'
         ]
-        self.animations = {action: [] for action in actions}
+        self.animations.clear()
+        self.animations.update({action: [] for action in actions})
 
         # --- NOUVEAU CHEMIN DES IMAGES ---
-        base_path = os.path.join(ROOT_DIR, 'assets', 'images', 'player', 'mouvements')
+        if getattr(self, 'player_num', 1) == 2:
+            base_path = os.path.join(ROOT_DIR, 'assets', 'images', 'player2', 'mouvements')
+            prefix = "Slime2_"
+            death_file = "Slime2_Death.png"
+        else:
+            base_path = os.path.join(ROOT_DIR, 'assets', 'images', 'player', 'mouvements')
+            prefix = "Slime1_"
+            death_file = "Slime1_Death_body.png"
 
         # --- REGLAGE DE LA TAILLE VISUELLE (Image Géante) ---
         SLIME_SIZE = (225, 225) 
@@ -431,7 +474,7 @@ class Player(pygame.sprite.Sprite):
                 return None
 
         # 1. IDLE / MOUVEMENT
-        idle_frames = slice_sheet("Slime1_Idle_body.png", cols=6, rows=4)
+        idle_frames = slice_sheet(f"{prefix}Idle_body.png", cols=6, rows=4)
         if idle_frames:
             self.animations['front']      = idle_frames[ROW_FRONT]
             self.animations['back']       = idle_frames[ROW_BACK]
@@ -449,7 +492,7 @@ class Player(pygame.sprite.Sprite):
             self.animations['land_right']   = idle_frames[ROW_RIGHT]
 
         # 2. MORT
-        death_frames = slice_sheet("Slime1_Death_body.png", cols=10, rows=4)
+        death_frames = slice_sheet(death_file, cols=10, rows=4)
         if death_frames:
             self.animations['death'] = death_frames[ROW_FRONT]
 
