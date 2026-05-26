@@ -1157,10 +1157,14 @@ class Game:
 
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_e:
                     if not self.is_paused and self.player.hp_current > 0:
+                        map_before = getattr(self, 'current_map_name', None)
                         # Interaction PNJ
                         for npc in self.npc_sprites:
                             if hasattr(npc, 'interact'):
                                 npc.interact()
+                        
+                        if getattr(self, 'current_map_name', None) != map_before:
+                            continue
                         
                         # Interaction Portes
                         for door in self.doors:
