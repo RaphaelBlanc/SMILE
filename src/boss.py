@@ -748,9 +748,9 @@ class Pyros(BossBase):
 
 class Glacius(BossBase):
     NAME     = "GLACIUS"
-    HP_MAX   = 480
-    WIDTH    = 140
-    HEIGHT   = 230
+    HP_MAX   = 2500
+    WIDTH    = 552
+    HEIGHT   = 288
     THEME_PROJ   = ICE_BLUE
     THEME_SHOCK  = ICE_BLUE
     THEME_BG_TOP = (2,  8, 20)
@@ -761,193 +761,371 @@ class Glacius(BossBase):
     THEME_PBORD  = (80,160,220)
 
     TUNING = {
-        "global_cd":  {1:2400, 2:1700, 3:1100},
-        "windup":     {"ice_shard":800,"freeze_zone":1100,"ice_wall":1200,
-                       "blizzard_spin":1000,"teleport_strike":900},
-        "cooldown":   {"ice_shard":1000,"freeze_zone":1800,"ice_wall":2000,
-                       "blizzard_spin":1400,"teleport_strike":1100},
-        "shard_n":3,"shard_ivl":550,"shard_spd":7,"shard_r":22,
-        "spin_count":8,"spin_spd":4.5,"spin_r":18,
-        "tele_delay":600,
+        "global_cd":  {1: 2500, 2: 1800, 3: 1200},
+        "windup":     {
+            1: {"punch": 1200, "kick_wave": 1400, "laser_beam": 1500, "massive_smash": 2000},
+            2: {"punch": 900,  "kick_wave": 1100, "laser_beam": 1200, "massive_smash": 1600},
+            3: {"punch": 600,  "kick_wave": 800,  "laser_beam": 900,  "massive_smash": 1200},
+        },
+        "cooldown":   {
+            1: {"punch": 2000, "kick_wave": 2500, "laser_beam": 3500, "massive_smash": 4000},
+            2: {"punch": 1500, "kick_wave": 1800, "laser_beam": 2500, "massive_smash": 3000},
+            3: {"punch": 1000, "kick_wave": 1200, "laser_beam": 1800, "massive_smash": 2000},
+        }
     }
 
     def __init__(self, pos, obstacles, floor_y):
         super().__init__(pos, obstacles, floor_y)
-        self.HP_MAX = 480; self.hp = 480
-        self._shard_n=0; self._shard_t=0; self._shard_dir=1
-        self._spin_t=0; self._spin_angle=0; self._spin_dur=0
-        self._freeze_placed=False
-        self._tele_timer=0; self._tele_done=False; self._tele_strike=False
-        self._wall_placed=False; self._wall_tile=None
-        self.images = {s:self._draw(s) for s in ["idle","windup","attack","enrage"]}
-        self.image  = self.images["idle"]
-        self.rect   = self.image.get_rect(topleft=pos)
+        self.HP_MAX = 2500
+        self.hp = 2500
+        self.phase = 1
+        
+        self.anim_idx = 0
+        self.anim_timer = 0
+        self.current_anim_key = "idle"
+        self.animations = {}
+        self._load_sprites()
+        self.image = self.animations["idle"][0]
+        self.rect = self.image.get_rect(topleft=pos)
+        
+        self._laser_placed = False
+        
+        # Anti-camp variables
+        self.camp_timer = 0
+        self.last_player_pos = (pos[0], pos[1])
+        
+        self._kick_hitbox = None
 
-    def _draw(self, state):
-        W, H = self.WIDTH, self.HEIGHT
-        surf = pygame.Surface((W,H), pygame.SRCALPHA)
-        body = {"idle":(80,140,210),"windup":(100,170,240),
-                "attack":(40,90,180),"enrage":(20,60,160)}[state]
-        # Corps translucide élancé
-        pygame.draw.ellipse(surf, (*body,200), (8,H//3,W-16,H*2//3))
-        # Épaules avec stalactites
-        for sx in [8, W-8]:
-            pygame.draw.circle(surf, (*body,220), (sx,H//3+10), 22)
-            # Stalactites d'épaule
-            for i in range(3):
-                ox2=sx-10+i*10; oy2=H//3-5
-                pts=[(ox2,oy2),(ox2+5,oy2-20+i*5),(ox2+10,oy2)]
-                pygame.draw.polygon(surf,(*ICE_BLUE,200),pts)
-                pygame.draw.polygon(surf,(*WHITE,150),pts,1)
-        # Bras fins
-        arm=(*tuple(max(0,c-30) for c in body),180)
-        pygame.draw.rect(surf,arm,(-2,H//3+20,20,55),border_radius=8)
-        pygame.draw.rect(surf,arm,(W-18,H//3+20,20,55),border_radius=8)
-        # Griffes de cristal
-        for bx2,d in [(0,-1),(W,1)]:
-            for i in range(3):
-                angle=math.radians(-30+i*30)
-                ex=int(bx2+d*20*math.cos(angle)); ey=int(H//3+80+20*math.sin(angle))
-                pygame.draw.line(surf,(*ICE_BLUE,220),(bx2,H//3+75),(ex,ey),3)
-                pygame.draw.circle(surf,(*WHITE,200),(ex,ey),3)
-        # Jambes
-        for lx in [15,W-40]:
-            pygame.draw.rect(surf,(*tuple(max(0,c-50) for c in body),200),
-                             (lx,H-60,25,60),border_radius=6)
-        # Tête
-        pygame.draw.ellipse(surf,(*body,220),(16,6,W-32,H//3))
-        # Couronne de glace
-        for i in range(5):
-            a=math.radians(-60+i*30); r2=W//2-8
-            tx=int(W//2+r2*math.cos(a)); ty=int(H//4+r2*math.sin(a)-10)
-            pts2=[(tx-4,ty+8),(tx,ty-18+i%2*6),(tx+4,ty+8)]
-            pygame.draw.polygon(surf,(*ICE_BLUE,210),pts2)
-            pygame.draw.polygon(surf,(*WHITE,160),pts2,1)
-        # Yeux vides (blanc-bleu lumineux)
-        for ex,ey in [(W//2-18,H//4+5),(W//2+18,H//4+5)]:
-            pygame.draw.ellipse(surf,(200,235,255,230),(ex-10,ey-7,20,14))
-            pygame.draw.ellipse(surf,(255,255,255,255),(ex-5,ey-4,10,8))
-        # Bouche (fine fissure)
-        pygame.draw.line(surf,(150,200,255,180),(W//2-15,H//4+22),(W//2+15,H//4+22),2)
-        # Craquelures phase enrage
-        if state=="enrage":
-            for _ in range(8):
-                x1=random.randint(10,W-10); y1=random.randint(H//3,H-10)
-                pygame.draw.line(surf,(0,180,255,200),(x1,y1),(x1+random.randint(-15,15),y1+random.randint(-15,15)),2)
-        return surf
+    def _load_sprites(self):
+        import os
+        base_path = './assets/images/monstre/boss_glace'
+        
+        def load_seq(folder_name, prefix):
+            frames = []
+            dir_path = os.path.join(base_path, folder_name)
+            
+            actual_dir = dir_path
+            if os.path.exists(os.path.join(dir_path, folder_name)):
+                actual_dir = os.path.join(dir_path, folder_name)
+                
+            if not os.path.exists(actual_dir):
+                import pygame
+                s = pygame.Surface((552, 288), pygame.SRCALPHA)
+                return [s]
+                
+            files = [f for f in os.listdir(actual_dir) if f.endswith('.png')]
+            for i in range(1, len(files) + 1):
+                path = os.path.join(actual_dir, f"{prefix}_{i}.png")
+                if os.path.exists(path):
+                    try:
+                        import pygame
+                        surf = pygame.image.load(path).convert_alpha()
+                        cropped = pygame.Surface((184, 96), pygame.SRCALPHA)
+                        cropped.blit(surf, (0, 0), (3, 17, 184, 96))
+                        cropped = pygame.transform.scale(cropped, (552, 288))
+                        frames.append(cropped)
+                    except Exception:
+                        pass
+            if not frames:
+                import pygame
+                s = pygame.Surface((552, 288), pygame.SRCALPHA)
+                return [s]
+            return frames
 
-    def _draw_aura(self, base, dt_ms):
-        self._aura_tick += dt_ms
-        alpha = int(60+50*math.sin(self._aura_tick/200))
-        aura  = pygame.Surface((self.WIDTH+40,self.HEIGHT+40), pygame.SRCALPHA)
-        pygame.draw.ellipse(aura,(*ICE_BLUE,alpha),(0,0,self.WIDTH+40,self.HEIGHT+40))
-        combo = pygame.Surface((self.WIDTH+40,self.HEIGHT+40), pygame.SRCALPHA)
-        combo.blit(aura,(0,0)); combo.blit(base,(20,20))
-        old=self.rect.center; self.rect=combo.get_rect(center=old)
-        return combo
+        self.animations["idle"] = load_seq("idle", "idle")
+        self.animations["walk"] = load_seq("walk", "walk")
+        atk = load_seq("1_atk", "1_atk")
+        self.animations["punch"] = atk
+        self.animations["kick_wave"] = atk
+        self.animations["laser_beam"] = atk
+        self.animations["massive_smash"] = atk
+
+    def update(self, player_rect, dt):
+        if getattr(self, 'alive', True) == False:
+            return
+            
+        dt_ms = dt * 1000
+        
+        # Anti-camp tracking
+        if getattr(self, 'attack_state', 0) not in (WINDUP, EXECUTING) and getattr(self, 'hp', 0) > 0:
+            import math
+            dist = math.hypot(player_rect.centerx - self.last_player_pos[0], player_rect.centery - self.last_player_pos[1])
+            if dist < 200:
+                self.camp_timer += dt_ms
+                if self.camp_timer > 3000:
+                    self._trigger_teleport(player_rect)
+            else:
+                self.camp_timer = 0
+                self.last_player_pos = (player_rect.centerx, player_rect.centery)
+                
+        # Call base logic to run state machine
+        super().update(player_rect, dt)
+        
+        # Phase Speed Boost: override the slow 1.2 default speed
+        if getattr(self, 'attack_state', 0) == IDLE and self.vx != 0:
+            speed = 1.5 + (self.phase * 1.5) # Phase 1: 3.0, Phase 2: 4.5, Phase 3: 6.0
+            self.vx = speed if self.vx > 0 else -speed
+
+        self._update_visual(dt_ms)
+
+    def _trigger_teleport(self, pr):
+        self.camp_timer = 0
+        self.last_player_pos = (pr.centerx, pr.centery) 
+        
+        target_x = pr.centerx + 250 if pr.centerx < self.rect.centerx else pr.centerx - 250
+        test_rect = self.rect.copy()
+        test_rect.centerx = target_x
+        
+        # FIX: Align Y to player's bottom so he doesn't teleport under the stairs
+        test_rect.bottom = pr.bottom - 10 
+        
+        # Slide towards player until safe
+        step = -15 if target_x > pr.centerx else 15
+        for _ in range(30):
+            collision = False
+            for obs in self.obstacles:
+                if test_rect.colliderect(obs.rect):
+                    collision = True
+                    break
+            if not collision:
+                break
+            test_rect.x += step
+            
+        self.rect.topleft = test_rect.topleft
+        self.vx = 0
+        self.vy = 0 # Prevent gravity buildup
+        self.facing_right = pr.centerx > self.rect.centerx
+        
+        self.attack_name = "massive_smash"
+        self.attack_state = WINDUP
+        self._massive_windup = 2500
+        self.windup_timer = 2500 
+        self.cd_timer = 0
+
+    def _update_phase(self):
+        if self.hp > 1800:
+            new_phase = 1
+        elif self.hp > 800:
+            new_phase = 2
+        else:
+            new_phase = 3
+            
+        if self.phase != new_phase:
+            self.phase = new_phase
+            self._phase_burst()
+
+    def take_damage(self, amount):
+        if self.attack_name == "laser_beam" and getattr(self, 'attack_state', 0) in (WINDUP, EXECUTING):
+            return 
+        super().take_damage(amount)
 
     def _get_attack_pool(self):
-        return {1:["ice_shard","freeze_zone"],
-                2:["ice_shard","freeze_zone","blizzard_spin"],
-                3:["ice_shard","freeze_zone","blizzard_spin","teleport_strike"]}[self.phase]
-    def _get_windup(self,n):   return self.TUNING["windup"].get(n,900)
-    def _get_cooldown(self,n): return self.TUNING["cooldown"].get(n,1300)
+        pool = ["punch", "massive_smash"]
+        if self.phase >= 2:
+            pool.append("kick_wave")
+            pool.append("laser_beam")
+        return pool
+
+    def _get_windup(self, n):   return self.TUNING["windup"][self.phase].get(n, 900)
+    def _get_cooldown(self, n): return self.TUNING["cooldown"][self.phase].get(n, 1000)
     def _get_global_cd(self):  return self.TUNING["global_cd"][self.phase]
 
     def _start_attack(self, pr):
-        n=self.attack_name; T=self.TUNING
-        self._shard_n=0; self._shard_t=0
-        self._freeze_placed=False; self._wall_placed=False
-        self._tele_timer=0; self._tele_done=False; self._tele_strike=False
-        self._spin_t=0; self._spin_angle=0; self._spin_dur=3000
-        if n=="ice_shard":
-            self._shard_dir=1 if pr.centerx>self.rect.centerx else -1
-        elif n=="teleport_strike":
-            self._tele_target_x=pr.left-self.WIDTH-10
-        elif n=="blizzard_spin":
-            self._spin_dur=3000
+        n = self.attack_name
+        self.anim_idx = 0
+        self.anim_timer = 0
+        
+        if n == "laser_beam":
+            self._laser_placed = False
+            self.exec_timer = 1500
+            self._laser_target = (pr.centerx, pr.centery)
+        elif n == "kick_wave":
+            self._dir = 1 if pr.centerx > self.rect.centerx else -1
+            self.facing_right = self._dir == 1
+            self.exec_timer = 900 
+            self._kick_hitbox = None
+        elif n == "punch":
+            self._dir = 1 if pr.centerx > self.rect.centerx else -1
+            self.facing_right = self._dir == 1
+            self.exec_timer = 900
+        elif n == "massive_smash":
+            self.exec_timer = 900
 
     def _exec_attack(self, dt_ms, pr):
-        n=self.attack_name
-        if   n=="ice_shard":         self._ex_shard(dt_ms,pr)
-        elif n=="freeze_zone":       self._ex_freeze(dt_ms,pr)
-        elif n=="blizzard_spin":     self._ex_spin(dt_ms,pr)
-        elif n=="teleport_strike":   self._ex_tele(dt_ms,pr)
+        n = self.attack_name
+        if n == "punch":
+            self._ex_punch(dt_ms)
+        elif n == "kick_wave":
+            self._ex_kick(dt_ms)
+        elif n == "laser_beam":
+            self._ex_laser(dt_ms)
+        elif n == "massive_smash":
+            self._ex_massive(dt_ms)
 
-    def _ex_shard(self, dt_ms, pr):
-        T=self.TUNING
-        self._shard_t+=dt_ms
-        if self._shard_n<T["shard_n"] and self._shard_t>=T["shard_ivl"]:
-            self._shard_t=0; self._shard_n+=1
-            cx=(self.rect.right+12 if self._shard_dir==1 else self.rect.left-12)
-            cy=self.rect.centery
-            # Éclat pointu qui va toucher le sol et plante une pique
-            p=BossProjectile((cx,cy),self._shard_dir*T["shard_spd"],2,
-                             radius=T["shard_r"],color=ICE_BLUE,max_lifetime=2500)
+    def _ex_punch(self, dt_ms):
+        if self.exec_timer == 900: 
+            # Massively reduced punch range: pulled closer to center, smaller radius
+            cx = self.rect.centerx + 130 if self.facing_right else self.rect.centerx - 130
+            p = BossProjectile((cx, self.rect.centery), 0, 0, radius=30, color=ICE_BLUE, max_lifetime=150)
             self.projectiles.add(p)
-        if self._shard_n>=T["shard_n"]:
-            self.exec_timer-=dt_ms
-            if self.exec_timer<=400: self._end_attack()
+            
+        self.exec_timer -= dt_ms
+        if self.exec_timer <= 0:
+            self._end_attack()
 
-    def _ex_freeze(self, dt_ms, pr):
-        if not self._freeze_placed:
-            self._freeze_placed=True
-            # Zone gelée centrée sur le joueur
-            fx=max(60,pr.centerx-100)
-            fg=FrozenGround(fx,self.floor_y,200,5000)
-            self.hazards.add(fg)
-        self.exec_timer-=dt_ms
-        if self.exec_timer<=3200: self._end_attack()
+    def _ex_kick(self, dt_ms):
+        if self.exec_timer == 900:
+            cx = self.rect.right + 10 if self.facing_right else self.rect.left - 10
+            self._kick_hitbox = (cx, self.floor_y - 20)
+            p = BossProjectile((cx, self.floor_y - 20), self._dir * 12, 0, radius=30, color=ICE_BLUE, max_lifetime=2000)
+            p.freezes_player = True
+            import pygame
+            pygame.draw.polygon(p.image, (255,255,255), [(30, 60), (0, 0), (60, 0)])
+            self.projectiles.add(p)
+            
+        self.exec_timer -= dt_ms
+        if self.exec_timer <= 0:
+            self._end_attack()
+            self._kick_hitbox = None
+            
+    def _ex_massive(self, dt_ms):
+        if self.exec_timer == 900:
+            sw1 = ShockWave(self.rect.centerx, self.floor_y, spread_speed=25, wave_height=120, color=ICE_BLUE)
+            self.shockwaves.add(sw1)
+            self._screen_shake_flag = True
+            self._emit_dust(50, [ICE_BLUE, WHITE])
+            
+        self.exec_timer -= dt_ms
+        if self.exec_timer <= 0:
+            self._end_attack()
 
-    def _ex_spin(self, dt_ms, pr):
-        T=self.TUNING
-        self._spin_t+=dt_ms; self._spin_dur-=dt_ms
-        interval=180
-        if self._spin_t>=interval:
-            self._spin_t=0; self._spin_angle+=30
-            cx,cy=self.rect.center
-            for i in range(T["spin_count"]):
-                a=math.radians(self._spin_angle+i*(360//T["spin_count"]))
-                vx=math.cos(a)*T["spin_spd"]; vy=math.sin(a)*T["spin_spd"]
-                self.projectiles.add(BossProjectile(
-                    (cx,cy),vx,vy,radius=T["spin_r"],color=ICE_BLUE,max_lifetime=2000))
-        if self._spin_dur<=0: self._end_attack()
+    def _ex_laser(self, dt_ms):
+        if not self._laser_placed:
+            self._laser_placed = True
+            laser = GlaciusLaserHazard(self.rect.centerx, self.rect.centery - 20, self._laser_target[0], self._laser_target[1])
+            self.hazards.add(laser)
+            
+        self.exec_timer -= dt_ms
+        if self.exec_timer <= 0:
+            self._end_attack()
 
-    def _ex_tele(self, dt_ms, pr):
-        T=self.TUNING
-        self._tele_timer+=dt_ms
-        if not self._tele_done and self._tele_timer>=T["tele_delay"]:
-            self._tele_done=True
-            # Téléportation derrière le joueur
-            tx=pr.left-self.WIDTH-10
-            tx=max(50,min(SCREEN_WIDTH-self.WIDTH-50,tx))
-            self.rect.x=tx; self.rect.bottom=self.floor_y
-            self.vy=0
-        if self._tele_done and not self._tele_strike:
-            d=1 if pr.centerx>self.rect.centerx else -1
-            if abs(pr.centerx-self.rect.centerx)<100:
-                self._tele_strike=True; self.exec_timer=400
-                self.projectiles.add(BossProjectile(
-                    (self.rect.centerx,self.rect.centery),d*4,0,
-                    radius=28,color=ICE_BLUE,max_lifetime=500))
-        if self._tele_strike:
-            self.exec_timer-=dt_ms
-            if self.exec_timer<=0: self._end_attack()
-        elif self._tele_done:
-            self.exec_timer-=dt_ms
-            if self.exec_timer<=200: self._end_attack()
+    def _update_visual(self, dt_ms):
+        anim_key = "idle"
+        if getattr(self, 'attack_state', 0) in (WINDUP, EXECUTING):
+            anim_key = self.attack_name
+        elif self.vx != 0:
+            anim_key = "walk"
+            
+        if anim_key not in self.animations:
+            anim_key = "idle"
+            
+        if self.current_anim_key != anim_key:
+            self.current_anim_key = anim_key
+            self.anim_idx = 0
+            self.anim_timer = 0
+            
+        frames = self.animations[anim_key]
+        if self.anim_idx >= len(frames):
+            self.anim_idx = 0
+            
+        fps = 10
+        if anim_key in ["punch", "kick_wave", "laser_beam", "massive_smash"]:
+            fps = 15
+            
+        if getattr(self, 'attack_state', 0) == WINDUP:
+            self.anim_idx = 0
+        else:
+            self.anim_timer += dt_ms
+            if self.anim_timer >= 1000 / fps:
+                self.anim_timer = 0
+                self.anim_idx = (self.anim_idx + 1) % len(frames)
+            
+        base = frames[self.anim_idx].copy()
+        
+        if self.attack_name == "laser_beam" and getattr(self, 'attack_state', 0) in (WINDUP, EXECUTING):
+            import pygame
+            pygame.draw.circle(base, (0, 200, 255, 100), (276, 144), 140, 15)
+            pygame.draw.circle(base, (255, 255, 255, 150), (276, 144), 130, 5)
+            
+        if getattr(self, 'facing_right', True):
+            import pygame
+            base = pygame.transform.flip(base, True, False)
+            
+        self.image = base
 
     def _draw_extras(self, screen, ox, oy):
-        # Dessine les piques de glace depuis hazards (déjà dans le groupe)
-        for h in self.hazards:
-            if isinstance(h, FrozenGround):
-                screen.blit(h.image,(h.rect.x+ox,h.rect.y+oy))
-        # Trace de givre sous le boss
-        if self.on_ground:
-            s=pygame.Surface((self.WIDTH+20,8),pygame.SRCALPHA)
-            s.fill((*ICE_BLUE,60))
-            screen.blit(s,(self.rect.left-10+ox,self.rect.bottom-4+oy))
+        import math
+        import pygame
+        
+        if self.attack_name == "massive_smash" and getattr(self, 'attack_state', 0) == WINDUP:
+            pct = 1 - (self.windup_timer / max(1, getattr(self, '_massive_windup', self._get_windup("massive_smash"))))
+            r = int(400 * pct) 
+            if r > 5:
+                surf = pygame.Surface((r*2, r*2), pygame.SRCALPHA)
+                pygame.draw.circle(surf, (0, 150, 255, 80), (r, r), r)
+                pygame.draw.circle(surf, (0, 200, 255, 150), (r, r), r, 4)
+                screen.blit(surf, (self.rect.centerx - r + ox, self.floor_y - r + oy))
+                
+        elif self.attack_name == "laser_beam" and getattr(self, 'attack_state', 0) == WINDUP:
+            if hasattr(self, '_laser_target'):
+                pygame.draw.line(screen, (0, 200, 255, 150), (self.rect.centerx + ox, self.rect.centery + oy), (self._laser_target[0] + ox, self._laser_target[1] + oy), 2)
 
+        if getattr(self, 'attack_state', 0) == EXECUTING:
+            if self.attack_name == "kick_wave" and getattr(self, '_kick_hitbox', None):
+                hx, hy = self._kick_hitbox
+                surf = pygame.Surface((100, 100), pygame.SRCALPHA)
+                surf.fill((0, 200, 255, 120))
+                pygame.draw.rect(surf, (255, 255, 255, 200), (0, 0, 100, 100), 4)
+                screen.blit(surf, (hx - 50 + ox, hy - 50 + oy))
+
+
+class GlaciusLaserHazard(pygame.sprite.Sprite):
+    def __init__(self, x, y, target_x, target_y, duration=1500):
+        super().__init__()
+        import pygame
+        self.born = pygame.time.get_ticks()
+        self.life = duration
+        self.damage = 5
+        
+        import math
+        dx = target_x - x
+        dy = target_y - y
+        self.angle = math.atan2(dy, dx)
+        self.length = 2500
+        
+        end_x = x + math.cos(self.angle) * self.length
+        end_y = y + math.sin(self.angle) * self.length
+        
+        min_x = min(x, end_x) - 40
+        max_x = max(x, end_x) + 40
+        min_y = min(y, end_y) - 40
+        max_y = max(y, end_y) + 40
+        
+        w = int(max_x - min_x)
+        h = int(max_y - min_y)
+        
+        self.image = pygame.Surface((w, h), pygame.SRCALPHA)
+        
+        lx1 = x - min_x
+        ly1 = y - min_y
+        lx2 = end_x - min_x
+        ly2 = end_y - min_y
+        
+        pygame.draw.line(self.image, (0, 100, 255, 80), (lx1, ly1), (lx2, ly2), 80)
+        pygame.draw.line(self.image, (0, 150, 255, 120), (lx1, ly1), (lx2, ly2), 60)
+        pygame.draw.line(self.image, (0, 200, 255, 180), (lx1, ly1), (lx2, ly2), 30)
+        pygame.draw.line(self.image, (255, 255, 255, 255), (lx1, ly1), (lx2, ly2), 10)
+        
+        self.rect = self.image.get_rect(topleft=(min_x, min_y))
+        try:
+            self.mask = pygame.mask.from_surface(self.image)
+        except Exception:
+            pass
+
+    def update(self, obstacles=None):
+        import pygame
+        if pygame.time.get_ticks() - self.born > self.life:
+            self.kill()
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  BOSS 3 – GRANIT  (Pierre)  ★★★★☆

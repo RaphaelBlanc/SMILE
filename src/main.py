@@ -918,7 +918,7 @@ class Game:
                                     self.killed_by_boss = True
                     for h in m.hazards:
                         if h.rect.colliderect(self.player.hitbox) and self.player.hp_current > 0:
-                            self.player.take_damage(1) # dégâts continus légers
+                            self.player.take_damage(getattr(h, 'damage', 1)) # dégâts continus
                             if self.player.hp_current <= 0:
                                 self.killed_by_boss = True
 
