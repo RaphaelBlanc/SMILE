@@ -153,6 +153,9 @@ class RemotePlayer(pygame.sprite.Sprite):
         self.rect.y     = state.get("y",  self.rect.y)
         self.hp_current = state.get("hp", self.hp_current)
 
+    def take_damage(self, amount):
+        pass  # Les dégâts du joueur distant sont gérés de son côté et synchronisés via le réseau
+
 #CLASS INTRO VIDEO##################################################################
 
 class IntroVideo:
