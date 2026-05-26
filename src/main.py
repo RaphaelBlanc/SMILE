@@ -142,11 +142,61 @@ class RemotePlayer(pygame.sprite.Sprite):
     """Représentation locale du joueur distant — mis à jour par les messages réseau."""
     def __init__(self, pos):
         super().__init__()
-        self.image = pygame.Surface((32, 64))
-        self.image.fill((0, 200, 255))      # cyan pour distinguer
+        import os
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        root_dir = os.path.dirname(current_dir)
+        
+        path = os.path.join(root_dir, 'assets', 'images', 'player', 'mouvements', 'Slime1_Idle_body.png')
+        self.frames = []
+        try:
+            sheet = pygame.image.load(path).convert_alpha()
+            w, h = sheet.get_width() // 6, sheet.get_height() // 4
+            for c in range(6):
+                rect = pygame.Rect(c * w, 3 * h, w, h)
+                img = pygame.Surface((w, h), pygame.SRCALPHA)
+                img.blit(sheet, (0, 0), rect)
+                img = pygame.transform.scale(img, (225, 225))
+                
+                # Teinter en rouge pour distinguer le joueur 2
+                tint = pygame.Surface((225, 225), pygame.SRCALPHA)
+                tint.fill((255, 60, 60, 100))
+                img.blit(tint, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+                
+                self.frames.append(img)
+        except Exception as e:
+            print("RemotePlayer load error:", e)
+            img = pygame.Surface((32, 64))
+            img.fill((0, 200, 255))
+            self.frames = [img]
+
+        self.image = self.frames[0]
         self.rect  = self.image.get_rect(topleft=pos)
         self.hp_current = 100
         self.hp_max     = 100
+        
+        self.anim_idx = 0
+        self.anim_timer = 0
+        self.last_x = self.rect.x
+        self.facing_right = True
+
+    def update(self, dt):
+        if len(self.frames) > 1:
+            self.anim_timer += dt * 1000
+            if self.anim_timer >= 100:
+                self.anim_timer = 0
+                self.anim_idx = (self.anim_idx + 1) % len(self.frames)
+                
+            base_image = self.frames[self.anim_idx]
+            if self.rect.x > self.last_x:
+                self.facing_right = True
+            elif self.rect.x < self.last_x:
+                self.facing_right = False
+            self.last_x = self.rect.x
+            
+            if not self.facing_right:
+                self.image = pygame.transform.flip(base_image, True, False)
+            else:
+                self.image = base_image
 
     def apply_state(self, state: dict):
         self.rect.x     = state.get("x",  self.rect.x)
@@ -958,6 +1008,9 @@ class Game:
                 # En mode client on laisse quand même le joueur se mettre à jour
                 # visuellement (la position sera écrasée par l'état réseau)
                 self.player.update(self.obstacle_sprites, self.ladder_sprites, dt)
+                
+            if self.is_multi and getattr(self, 'remote_player', None):
+                self.remote_player.update(dt)
                 
                 # Check transition to Zone1
                 if pygame.sprite.spritecollideany(self.player, self.transition_sprites):
