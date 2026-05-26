@@ -311,6 +311,7 @@ class Game:
         self.is_multi      = False         # True si partie réseau
         self.remote_player = None          # RemotePlayer (l'autre joueur)
         self.net_timer     = 0             # compteur pour envoi état (host)
+        self.pending_damage_events = []
 
         # --- SON / MENU ---
         self.sound_manager = SoundManager()
@@ -767,12 +768,12 @@ class Game:
                         self.remote_player.rect.y     = msg.get("p2_y", self.remote_player.rect.y)
                         self.remote_player.hp_current = msg.get("p2_hp", self.remote_player.hp_current)
                     self.remote_projs = msg.get("projs", [])
+                    for dmg in msg.get("damage_events", []):
+                        mob_id = dmg.get("mob_id")
+                        mob = next((m for m in self.monster_sprites if getattr(m, 'id', None) == mob_id), None)
+                        if mob:
+                            mob.take_damage(dmg.get("amount", 20))
                 elif msg.get("action") == "damage_mob":
-                    mob_id = msg.get("mob_id")
-                    mob = next((m for m in self.monster_sprites if getattr(m, 'id', None) == mob_id), None)
-                    if mob:
-                        mob.take_damage(msg.get("amount", 20))
-                elif msg.get("action") == "respawn_team":
                     self._respawn()
                 elif msg.get("action") == "request_map_change":
                     self.load_map(msg.get("dest"))
@@ -786,9 +787,11 @@ class Game:
                     "p2_x":  self.player.rect.x,
                     "p2_y":  self.player.rect.y,
                     "p2_hp": self.player.hp_current,
-                    "projs": [{"x": p.rect.x, "y": p.rect.y} for p in self.player.capacite.projectiles]
+                    "projs": [{"x": p.rect.x, "y": p.rect.y} for p in self.player.capacite.projectiles],
+                    "damage_events": self.pending_damage_events
                 }
                 self.network.send_client_state(state)
+                self.pending_damage_events = []
 
             for msg in self.network.poll():
                 self.last_msg_time = pygame.time.get_ticks()
@@ -1018,7 +1021,7 @@ class Game:
                             m.take_damage(20)
                         elif self.network.role == "client":
                             if self.network:
-                                self.network._send({"action": "damage_mob", "mob_id": getattr(m, 'id', -1), "amount": 20})
+                                self.pending_damage_events.append({"mob_id": getattr(m, 'id', -1), "amount": 20})
                         break
 
             # Mise à jour des projectiles ennemis
