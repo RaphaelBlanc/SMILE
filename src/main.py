@@ -1471,9 +1471,12 @@ class Game:
                 elif (self.network.role == "client"
                         and self.menu.state == "multi_client_wait_start"):
                     for msg in self.network.poll():
-                        if msg.get("action") == "start_multi_game":
+                        # L'hôte envoie continuellement l'état du jeu (game_state) une fois la partie lancée
+                        if msg.get("action") == "game_state" or msg.get("action") == "start_multi_game":
                             print("L'hôte a lancé la partie !")
                             self._launch_multi_game()
+                            # On remet le message pour qu'il soit traité par le update normal
+                            self.network.incoming.insert(0, msg)
                             break
 
             self.update(dt)

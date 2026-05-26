@@ -510,8 +510,6 @@ class Menu:
             import math
             pygame.draw.arc(self.screen, WHITE, rect, t, t + math.pi, 6)
             
-            self.draw_button(self.btn_back_multi_mode, "RETOUR", GREY, WHITE, mouse_pos)
-
         # ── Lobby multi : choisir host ou client ────────────────────
         elif self.state == "multi_lobby":
             self.draw_text("MULTIJOUEUR", self.titre_font, YELLOW, cx, 250)
@@ -655,8 +653,7 @@ class Menu:
 
             # ── multi_client_wait_start ─────────────────────────────
             elif self.state == "multi_client_wait_start":
-                if self.btn_back_multi_mode.collidepoint(event.pos):
-                    return "disconnect_multi"
+                pass
 
             # ── save_selection ──────────────────────────────────────
             elif self.state == "save_selection":
