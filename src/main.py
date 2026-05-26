@@ -888,14 +888,19 @@ class Game:
                 boss_hazards = []
                 for m in self.monster_sprites:
                     hp_val = getattr(m, 'hp_current', getattr(m, 'hp', 0))
-                    mobs_state.append({"id": getattr(m, 'id', -1), "x": m.rect.x, "y": m.rect.y, "hp": hp_val})
+                    state_dict = {"id": getattr(m, 'id', -1), "x": m.rect.x, "y": m.rect.y, "hp": hp_val}
                     if hasattr(m, 'attack_state'):
+                        state_dict["astate"] = m.attack_state
+                        state_dict["phase"] = getattr(m, 'phase', 1)
+                        if hasattr(m, 'attack_name'):
+                            state_dict["aname"] = m.attack_name
                         for p in getattr(m, 'projectiles', []):
                             boss_projs.append({"x": p.rect.x, "y": p.rect.y})
                         for sw in getattr(m, 'shockwaves', []):
                             boss_shockwaves.append({"x": sw.rect.x, "y": sw.rect.y, "w": sw.rect.width, "h": sw.rect.height})
                         for hz in getattr(m, 'hazards', []):
                             boss_hazards.append({"x": hz.rect.x, "y": hz.rect.y, "w": hz.rect.width, "h": hz.rect.height})
+                    mobs_state.append(state_dict)
                 state["mobs"] = mobs_state
                 state["boss_projs"] = boss_projs
                 state["boss_shockwaves"] = boss_shockwaves
@@ -997,6 +1002,13 @@ class Game:
                             elif hasattr(mob, 'hp'):
                                 mob.hp = m_state["hp"]
                                 if mob.hp <= 0: mob.alive = False
+                                
+                            if "astate" in m_state:
+                                mob.attack_state = m_state["astate"]
+                            if "phase" in m_state:
+                                mob.phase = m_state["phase"]
+                            if "aname" in m_state:
+                                mob.attack_name = m_state["aname"]
                     for m in list(self.monster_sprites):
                         if getattr(m, 'id', None) not in received_ids:
                             if hasattr(m, 'hp_current'):
@@ -1005,6 +1017,19 @@ class Game:
                                 m.hp = 0
                             if hasattr(m, 'dead'): m.dead = True
                             if hasattr(m, 'alive'): m.alive = False
+                            
+                            if 'Esprit' in type(m).__name__:
+                                from monstre import ExplosionVFX
+                                ExplosionVFX(
+                                    m.rect.center,
+                                    getattr(m, 'COULEUR_CORPS', (255, 0, 0)),
+                                    getattr(m, 'EXPLOSION_RADIUS', 25),
+                                    getattr(m, 'vfx_groups', [self.visibles_sprites])
+                                )
+                                dist = pygame.math.Vector2(m.rect.center).distance_to(self.player.rect.center)
+                                if dist < getattr(m, 'EXPLOSION_RADIUS', 25) + 30:
+                                    if hasattr(m, '_apply_explosion'):
+                                        m._apply_explosion(self.player)
                 elif msg.get("action") == "respawn_team":
                     self._respawn()
 
