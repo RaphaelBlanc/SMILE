@@ -678,6 +678,12 @@ class Game:
             self.player.set_position(player_spawn)
             self.respawn_point = player_spawn
             
+        self.coming_from_boss = False
+        self.coming_from_glace = False
+        self.coming_from_lave = False
+        self.coming_from_teleport = False
+        self.coming_from_teleport_lave = False
+        self.map_flag = None
         self.killed_by_boss = False
         self.coming_from_boss = False
         self.coming_from_glace = False
@@ -929,6 +935,7 @@ class Game:
                     self._respawn()
                 elif msg.get("action") == "request_map_change":
                     req_flag = msg.get("req_flag", "none")
+                    self.map_flag = req_flag if req_flag != "none" else None
                     if req_flag == "boss": self.coming_from_boss = True
                     elif req_flag == "glace": self.coming_from_glace = True
                     elif req_flag == "lave": self.coming_from_lave = True
@@ -1557,10 +1564,13 @@ class Game:
                                 
                                 if 'boss' in self.current_map_name:
                                     self.coming_from_boss = True
+                                    self.map_flag = "boss"
                                 elif 'glace' in self.current_map_name:
                                     self.coming_from_glace = True
+                                    self.map_flag = "glace"
                                 elif 'lave' in self.current_map_name.lower():
                                     self.coming_from_lave = True
+                                    self.map_flag = "lave"
                                 
                                 if self.is_multi and self.network and self.network.role == "client":
                                     req_flag = "none"
