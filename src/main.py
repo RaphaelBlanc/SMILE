@@ -697,6 +697,7 @@ class Game:
 
     def teleport_from_boss(self):
         self.coming_from_teleport = True
+        self.map_flag = "tp_glace"
         if self.is_multi and self.network and self.network.role == "client":
             self.network._send({"action": "request_map_change", "dest": "assets/maps/map_glace.tmx", "req_flag": "tp_glace"})
             return
@@ -704,6 +705,7 @@ class Game:
 
     def teleport_from_boss_lave(self):
         self.coming_from_teleport_lave = True
+        self.map_flag = "tp_lave"
         if self.is_multi and self.network and self.network.role == "client":
             self.network._send({"action": "request_map_change", "dest": "assets/maps/ZoneLave.tmx", "req_flag": "tp_lave"})
             return
@@ -1033,7 +1035,7 @@ class Game:
                                         getattr(m, 'vfx_groups', [self.visibles_sprites])
                                     )
                                     dist = pygame.math.Vector2(m.rect.center).distance_to(self.player.rect.center)
-                                    if dist < getattr(m, 'EXPLOSION_RADIUS', 25) + 30:
+                                    if dist < getattr(m, 'EXPLOSION_RADIUS', 25) + 60:
                                         if hasattr(m, '_apply_explosion'):
                                             m._apply_explosion(self.player)
                 elif msg.get("action") == "respawn_team":
