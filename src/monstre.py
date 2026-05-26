@@ -2,6 +2,10 @@ import pygame
 import math
 import random
 import os
+from animator import Animator
+
+# Calcule automatiquement le dossier dans lequel se trouve ce fichier
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ================================================================
 #  MONSTRE.PY  —  Ennemis avec machine à états — SMILE
@@ -31,7 +35,7 @@ SCREEN_WIDTH  = 1920
 SCREEN_HEIGHT = 1072
 
 # ================================================================
-#  UTILITAIRE : fabrique une surface pré-dessinée (évite le redraw)
+#  UTILITAIRE
 # ================================================================
 
 def _make_surf(w, h, draw_fn, *args):
@@ -78,37 +82,6 @@ class BaseEnemy(pygame.sprite.Sprite):
         self._anim_index = 0
         self._anim_speed = 0.12
 
-    def _load_sprites(self, folder_name, states, target_size):
-        base = os.path.join("assets", "monstres", folder_name)
-        for state in states:
-            path = os.path.join(base, state)
-            if not os.path.isdir(path):
-                continue
-            frames = []
-            for fname in sorted(os.listdir(path)):
-                if fname.lower().endswith(".png"):
-                    try:
-                        surf = pygame.image.load(
-                            os.path.join(path, fname)
-                        ).convert_alpha()
-                        surf = pygame.transform.scale(surf, target_size)
-                        frames.append(surf)
-                    except pygame.error:
-                        pass
-            if frames:
-                self._sprites[state] = frames
-
-    def _animate(self, state, dt, loop=True):
-        if state not in self._sprites or not self._sprites[state]:
-            return self.image
-        frames = self._sprites[state]
-        self._anim_timer += dt
-        if self._anim_timer >= self._anim_speed:
-            self._anim_timer = 0.0
-            self._anim_index = (self._anim_index + 1) % len(frames) if loop \
-                               else min(self._anim_index + 1, len(frames) - 1)
-        return frames[self._anim_index]
-
     def take_damage(self, amount):
         self.hp_current -= amount
         if self.hp_current <= 0:
@@ -117,7 +90,7 @@ class BaseEnemy(pygame.sprite.Sprite):
             self.on_death()
 
     def on_death(self):
-        self.kill()
+        pass # Let main.py handle the actual kill() so it can process death logic
 
     def tick_contact_timer(self):
         if self.contact_timer > 0:
@@ -170,8 +143,9 @@ class BaseEnemy(pygame.sprite.Sprite):
                 self.rect.bottom = hit.rect.top
                 self.vy = 0
 
+
 # ================================================================
-#  1. CHIEN ENRAGÉ
+#  1. CHIEN ENRAGÉ (Utilise Animator)
 # ================================================================
 
 class ChienEnrage(BaseEnemy):
@@ -179,15 +153,14 @@ class ChienEnrage(BaseEnemy):
     PATROL_SPEED  = 2
     PATROL_RADIUS = 120
     CHASE_SPEED   = 3
-    SLIDE_SPEED   = 6
+    SLIDE_SPEED   = 7
     SLIDE_DECAY   = 0.15
     TURN_DELAY    = 45
     DETECT_RANGE  = 500
     LOSE_RANGE    = 750
-    ATTACK_RANGE  = 5
+    ATTACK_RANGE  = 70  
     ATTACK_DAMAGE = 15
     ATTACK_CD     = 90
-    SLIDE_DAMAGE  = 10
     JUMP_OVER_THRESHOLD = 20
 
     ST_WANDER = "wander"
@@ -195,43 +168,22 @@ class ChienEnrage(BaseEnemy):
     ST_CHASE  = "chase"
     ST_ATTACK = "attack"
     ST_SLIDE  = "slide"
-
-    _SHEET_INFO = {
-        "wander":  ("walk.png",       11, 10),
-        "return":  ("walk.png",       11, 10),
-        "chase":   ("Run.png",         9, 14),
-        "attack":  ("Attack_1.png",    6, 12),
-        "slide":   ("Run_Attack.png",  7, 14),
-        "hurt":    ("Hurt.png",        2,  8),
-        "dead":    ("Dead.png",        2,  6),
-    }
-    FRAME_SIZE = 128
+    ST_HURT   = "hurt"
+    ST_DEAD   = "dead"
 
     def __init__(self, pos, groups):
         super().__init__(pos, hp=60, groups=groups, capacite_absorbable="dash")
         self.CONTACT_COOLDOWN = 80
 
-        self._sheets = {}
-        sheet_dir = os.path.join("assets", "monstres", "Black_Werewolf")
-        for state, (fname, nframes, _fps) in self._SHEET_INFO.items():
-            path = os.path.join(sheet_dir, fname)
-            if not os.path.isfile(path):
-                continue
-            try:
-                sheet = pygame.image.load(path).convert_alpha()
-                frames = []
-                for i in range(nframes):
-                    frame = sheet.subsurface(
-                        pygame.Rect(i * self.FRAME_SIZE, 0,
-                                    self.FRAME_SIZE, self.FRAME_SIZE)
-                    )
-                    frames.append(frame)
-                self._sheets[state] = frames
-            except pygame.error:
-                pass
+        # Chargement et préparation des animations
+        self.animations = self._load_animations()
+        self.animator = Animator(self.animations, fps=12)
 
-        placeholder = self._make_placeholder()
-        self.image = self._sheets.get("wander", [placeholder])[0]
+        if "idle" in self.animations and self.animations["idle"]:
+            self.image = self.animations["idle"][0]
+        else:
+            self.image = self._make_placeholder()
+            
         self.rect  = self.image.get_rect(topleft=pos)
 
         self.state        = self.ST_WANDER
@@ -239,53 +191,92 @@ class ChienEnrage(BaseEnemy):
         self.slide_vx     = 0.0
         self.turn_timer   = 0
         self.attack_timer = 0
+        self.charge_timer = 0  # NOUVEAU : Temps d'attente entre deux charges
         self.vy           = 0
 
-        self._anim_frame        = 0
-        self._anim_accum        = 0.0
-        self._anim_state        = None
-        self._attack_anim_done  = False
+    def _load_animations(self):
+        animations = {}
+        TARGET_SIZE = (160, 160) 
+        
+        path_option1 = os.path.join(CURRENT_DIR, "assets", "images", "monstre", "wolf")
+        path_option2 = os.path.join(os.path.dirname(CURRENT_DIR), "assets", "images", "monstre", "wolf")
+        sheet_dir = path_option1 if os.path.isdir(path_option1) else path_option2
+
+        file_mapping = {
+            "idle":   "Idle.png",
+            "wander": "walk.png",
+            "return": "walk.png",
+            "chase":  "Run.png",
+            "attack": "Attack_1.png",
+            "slide":  "Run+Attack.png",
+            "hurt":   "Hurt.png",
+            "dead":   "Dead.png"
+        }
+
+        for state, fname in file_mapping.items():
+            path = os.path.join(sheet_dir, fname)
+            frames = []
+            if os.path.isfile(path):
+                try:
+                    img = pygame.image.load(path).convert_alpha()
+                    w, h = img.get_size()
+                    
+                    if w > h:
+                        frame_size = h
+                        num_frames = w // frame_size
+                        for i in range(num_frames):
+                            rect = pygame.Rect(i * frame_size, 0, frame_size, frame_size)
+                            frame = img.subsurface(rect).copy()
+                            frame = pygame.transform.scale(frame, TARGET_SIZE)
+                            frames.append(frame)
+                    else:
+                        frame = pygame.transform.scale(img, TARGET_SIZE)
+                        frames.append(frame)
+                except pygame.error as e:
+                    print(f"⚠️ Erreur de chargement pour {fname} : {e}")
+            
+            if frames:
+                animations[state] = frames
+
+        if "idle" in animations:
+            animations["idle_right"] = animations["idle"]
+        elif "wander" in animations:
+            animations["idle_right"] = animations["wander"]
+        else:
+            animations["idle_right"] = [self._make_placeholder()]
+
+        return animations
 
     @staticmethod
     def _make_placeholder():
-        s = pygame.Surface((64, 64), pygame.SRCALPHA)
+        s = pygame.Surface((160, 160), pygame.SRCALPHA)
         s.fill((0, 0, 0, 0))
-        pygame.draw.ellipse(s, BROWN, (0, 16, 64, 32))
-        pygame.draw.ellipse(s, (180, 100, 40), (36, 20, 24, 18))
-        pygame.draw.circle(s, RED,   (48, 18), 5)
-        pygame.draw.circle(s, BLACK, (49, 18), 2)
+        pygame.draw.ellipse(s, BROWN, (20, 60, 120, 60))
         return s
 
     def _get_anim_frame(self, anim_state, loop=True):
-        if anim_state not in self._sheets:
-            return self._make_placeholder(), True
+        dt = 1.0 / 60.0  
+        
+        if anim_state in ["chase", "slide"]:
+            self.animator.animation_speed = 1.0 / 14
+        elif anim_state == "attack":
+            self.animator.animation_speed = 1.0 / 12
+        else:
+            self.animator.animation_speed = 1.0 / 10
 
-        frames = self._sheets[anim_state]
-        fps    = self._SHEET_INFO[anim_state][2]
-
-        if self._anim_state != anim_state:
-            self._anim_state = anim_state
-            self._anim_frame = 0
-            self._anim_accum = 0.0
-
-        self._anim_accum += fps / 60.0
-        while self._anim_accum >= 1.0:
-            self._anim_accum -= 1.0
-            if loop:
-                self._anim_frame = (self._anim_frame + 1) % len(frames)
-            elif self._anim_frame < len(frames) - 1:
-                self._anim_frame += 1
-
-        done = (not loop) and (self._anim_frame == len(frames) - 1)
-        surf = frames[self._anim_frame]
+        surf = self.animator.get_current_frame(dt, anim_state, loop=loop)
+        
         if not self.facing_right:
             surf = pygame.transform.flip(surf, True, False)
+            
+        frames = self.animator.animations.get(anim_state, [])
+        done = (not loop) and len(frames) > 0 and self.animator.frame_index >= len(frames) - 1
+        
         return surf, done
 
     def _player_jumping_over(self, player):
-        # Utilisation de player.hitbox
-        horizontalement_proche = abs(player.hitbox.centerx - self.rect.centerx) < 60
-        clairement_au_dessus   = player.hitbox.bottom < self.rect.top - self.JUMP_OVER_THRESHOLD
+        horizontalement_proche = abs(player.rect.centerx - self.rect.centerx) < 60
+        clairement_au_dessus   = player.rect.bottom < self.rect.top - self.JUMP_OVER_THRESHOLD
         en_l_air               = getattr(player, 'vy', 0) != 0 or not getattr(player, 'on_ground', True)
         return horizontalement_proche and clairement_au_dessus and en_l_air
 
@@ -293,45 +284,69 @@ class ChienEnrage(BaseEnemy):
         if self.dead: return
         self.tick_contact_timer()
         self._apply_gravity(obstacles)
-        # Utilisation de player.hitbox
-        dist = self.distance_to(player.hitbox)
+        
+        dist = self.distance_to(player.rect)
 
+        # Gestion des chronos
+        if self.attack_timer > 0: self.attack_timer -= 1
+        if self.charge_timer > 0: self.charge_timer -= 1
+
+        # 1. DÉTECTION DU JOUEUR
         if self.state in (self.ST_WANDER, self.ST_RETURN):
             if dist < self.DETECT_RANGE:
                 self.state = self.ST_CHASE
                 if getattr(self, 'sound_manager', None):
                     self.sound_manager.play("chien_detect")
 
+        # 2. LOGIQUE DE POURSUITE ET DÉCLENCHEMENT D'ATTAQUE
         elif self.state == self.ST_CHASE:
+            
+            # Cas A : Le joueur saute par dessus -> Le loup charge (slide)
             if self._player_jumping_over(player):
-                d = 1 if player.hitbox.centerx > self.rect.centerx else -1
+                d = 1 if player.rect.centerx > self.rect.centerx else -1
                 self._enter_slide(d)
-            elif dist <= self.ATTACK_RANGE and self.attack_timer == 0:
+                
+            # Cas B : Le joueur est à moyenne distance -> Le loup a une chance de charger
+            elif 150 < dist < 400 and self.charge_timer <= 0:
+                d = 1 if player.rect.centerx > self.rect.centerx else -1
+                self._enter_slide(d)
+                self.charge_timer = 180 # Il attend 3 secondes avant de pouvoir re-charger
+                
+            # Cas C : Le joueur est collé -> Le loup lance la vraie attaque
+            elif dist <= self.ATTACK_RANGE and self.attack_timer <= 0:
                 self.state = self.ST_ATTACK
+                self.animator.current_state = "attack"
+                self.animator.frame_index = 0
+                
+            # Cas D : Le joueur est trop loin -> Retour à la niche
             elif dist > self.LOSE_RANGE:
                 self.state = self.ST_RETURN
 
+        # 3. GESTION DE LA VRAIE ATTAQUE (MORSURE)
         elif self.state == self.ST_ATTACK:
             surf, done = self._get_anim_frame("attack", loop=False)
             self.image = surf
+            
+            # Quand l'animation de morsure est terminée :
             if done:
-                if self.contact_timer == 0:
+                # Si le joueur est toujours à portée, il prend les dégâts
+                if self.contact_timer <= 0 and dist <= self.ATTACK_RANGE + 30:
                     player.take_damage(self.ATTACK_DAMAGE)
                     self.contact_timer = self.CONTACT_COOLDOWN
                     if getattr(self, 'sound_manager', None):
                         self.sound_manager.play("chien_attack")
                 self.attack_timer = self.ATTACK_CD
                 self.state = self.ST_CHASE
-            return
+            return # On quitte ici pour ne pas écraser l'image en dessous
 
+        # 4. FIN DE LA CHARGE (SLIDE)
         elif self.state == self.ST_SLIDE:
             if abs(self.slide_vx) < 0.5:
                 self.slide_vx = 0.0
                 self.state = self.ST_CHASE if dist < self.LOSE_RANGE else self.ST_RETURN
 
-        if self.attack_timer > 0:
-            self.attack_timer -= 1
 
+        # --- MISE À JOUR DES POSITIONS ET DES IMAGES ---
         if self.state == self.ST_WANDER:
             self._do_wander(obstacles)
             self.image, _ = self._get_anim_frame("wander")
@@ -347,37 +362,42 @@ class ChienEnrage(BaseEnemy):
 
         elif self.state == self.ST_SLIDE:
             self._do_slide(obstacles)
-            # Utilisation de player.hitbox
-            if self.contact_timer == 0 and self.rect.colliderect(player.hitbox):
-                player.take_damage(self.SLIDE_DAMAGE)
-                self.contact_timer = self.CONTACT_COOLDOWN
-            self.image, _ = self._get_anim_frame("slide")
+            
+            # S'il fonce dans le joueur pendant sa charge :
+            if self.rect.colliderect(player.rect):
+                self.slide_vx = 0.0 # Il s'arrête net
+                
+                # S'il peut attaquer, il lance la vraie attaque
+                if self.attack_timer <= 0:
+                    self.state = self.ST_ATTACK
+                    self.animator.current_state = "attack"
+                    self.animator.frame_index = 0
+            else:
+                self.image, _ = self._get_anim_frame("slide")
 
     def take_damage(self, amount):
         super().take_damage(amount)
         if not self.dead:
             if self.state == self.ST_ATTACK:
                 self.state = self.ST_CHASE
-            self._anim_state = "hurt"
-            self._anim_frame = 0
-            self._anim_accum = 0.0
+            
+            self.animator.current_state = "hurt"
+            self.animator.frame_index = 0
             self.image, _ = self._get_anim_frame("hurt", loop=False)
 
     def on_death(self):
-        self._anim_state = "dead"
-        self._anim_frame = 0
-        self._anim_accum = 0.0
+        self.animator.current_state = "dead"
+        self.animator.frame_index = 0
         self.image, _ = self._get_anim_frame("dead", loop=False)
         if getattr(self, 'sound_manager', None):
             self.sound_manager.play("chien_death")
-        self.kill()
+        # Let main.py handle self.kill()
 
     def _do_chase(self, player, obstacles):
         if self.turn_timer > 0:
             self.turn_timer -= 1
             return
-        # Utilisation de player.hitbox
-        d = 1 if player.hitbox.centerx > self.rect.centerx else -1
+        d = 1 if player.rect.centerx > self.rect.centerx else -1
         if (d == 1) != self.facing_right:
             self.turn_timer   = self.TURN_DELAY
             self.facing_right = (d == 1)
@@ -394,9 +414,7 @@ class ChienEnrage(BaseEnemy):
         if self.slide_vx > 0:
             self.slide_vx = max(0.0, self.slide_vx - self.SLIDE_DECAY)
         else:
-            self.slide_vx = min(0.0, self.slide_vx + self.SLIDE_DECAY)
-
-
+            self.slide_vx = min(0.0, self.slide_vx + self.SLIDE_DECAY)          
 # ================================================================
 #  2a. GOBELIN CORPS-À-CORPS
 # ================================================================
@@ -451,8 +469,8 @@ class GoblinMelee(BaseEnemy):
         if self.dead: return
         self.tick_contact_timer()
         self._apply_gravity(obstacles)
-        # Utilisation de player.hitbox
-        dist = self.distance_to(player.hitbox)
+        
+        dist = self.distance_to(player.rect)
 
         if self.attack_timer > 0: self.attack_timer -= 1
         if self.stun_timer > 0:
@@ -471,8 +489,7 @@ class GoblinMelee(BaseEnemy):
         elif self.state == self.ST_RETURN:
             if self._do_return_to_spawn(obstacles): self.state = self.ST_WANDER
         elif self.state == self.ST_CHASE:
-            # Utilisation de player.hitbox
-            d = 1 if player.hitbox.centerx > self.rect.centerx else -1
+            d = 1 if player.rect.centerx > self.rect.centerx else -1
             self.facing_right = (d == 1)
             self._try_move(d * self.SPEED, obstacles)
         elif self.state == self.ST_ATTACK:
@@ -563,8 +580,8 @@ class GoblinArcher(BaseEnemy):
         if self.dead: return
         self.tick_contact_timer()
         self._apply_gravity(obstacles)
-        # Utilisation de player.hitbox
-        dist = self.distance_to(player.hitbox)
+        
+        dist = self.distance_to(player.rect)
 
         if self.shoot_timer > 0: self.shoot_timer -= 1
 
@@ -582,8 +599,7 @@ class GoblinArcher(BaseEnemy):
             if dist > self.LOSE_RANGE: self.state = self.ST_RETURN
             elif dist > self.PREFERRED_DIST: self.state = self.ST_POSITION
 
-        # Utilisation de player.hitbox
-        d = 1 if player.hitbox.centerx > self.rect.centerx else -1
+        d = 1 if player.rect.centerx > self.rect.centerx else -1
         self.facing_right = (d == 1)
 
         if self.state == self.ST_WANDER:
@@ -677,8 +693,7 @@ class EspritBase(BaseEnemy):
         if self.dead: return
         self.tick_contact_timer()
 
-        # Utilisation de player.hitbox
-        dist = self.distance_to(player.hitbox)
+        dist = self.distance_to(player.rect)
 
         if self.state in (self.ST_WANDER, self.ST_RETURN):
             if dist < self.DETECT_RANGE:
@@ -688,12 +703,11 @@ class EspritBase(BaseEnemy):
             if dist > self.LOSE_RANGE:
                 self.state = self.ST_RETURN
             
-            # Utilisation de player.hitbox
-            player_contact = self.rect.colliderect(player.hitbox)
+            player_contact = self.rect.colliderect(player.rect)
             floor_under_player = (
                 self.on_floor
-                and abs(self.rect.centerx - player.hitbox.centerx) < self.EXPLOSION_RADIUS
-                and abs(self.rect.bottom - player.hitbox.bottom) < 40
+                and abs(self.rect.centerx - player.rect.centerx) < self.EXPLOSION_RADIUS
+                and abs(self.rect.bottom - player.rect.bottom) < 40
             )
             if player_contact or floor_under_player:
                 self.state = self.ST_EXPLODE
@@ -706,6 +720,7 @@ class EspritBase(BaseEnemy):
                 self.EXPLOSION_RADIUS,
                 self.vfx_groups
             )
+            self.dead = True
             self.on_death()
             return
 
@@ -722,13 +737,11 @@ class EspritBase(BaseEnemy):
                 self.state = self.ST_WANDER
 
         elif self.state == self.ST_CHASE:
-            # Utilisation de player.hitbox
-            d = 1 if player.hitbox.centerx > self.rect.centerx else -1
+            d = 1 if player.rect.centerx > self.rect.centerx else -1
             self._try_move(d * self.SPEED, obstacles)
             
             if self.on_floor:
-                # Utilisation de player.hitbox
-                player_above = player.hitbox.centery < self.rect.centery - 20
+                player_above = player.rect.centery < self.rect.centery - 20
                 force = self.JUMP_FORCE * 1.1 if player_above else self.JUMP_FORCE * 0.9
                 self.vy = force
 
@@ -843,10 +856,9 @@ class EspritFoudre(EspritBase):
                 self.tp_timer -= 1
             elif self.on_floor:
                 offset_x = random.choice([-80, 80])
-                # Utilisation de player.hitbox
-                nx = max(32, min(1920 - 32, player.hitbox.centerx + offset_x))
+                nx = max(32, min(1920 - 32, player.rect.centerx + offset_x))
                 self.rect.centerx = nx
-                self.rect.bottom  = player.hitbox.bottom
+                self.rect.bottom  = player.rect.bottom
                 self.vy           = 0
                 self.tp_timer     = self.TELEPORT_CD
 
@@ -988,8 +1000,8 @@ class GolemPierre(BaseEnemy):
         if self.dead: return
         self.tick_contact_timer()
         self._apply_gravity(obstacles)
-        # Utilisation de player.hitbox
-        dist = self.distance_to(player.hitbox)
+        
+        dist = self.distance_to(player.rect)
 
         if self.attack_timer > 0: self.attack_timer -= 1
 
@@ -1024,8 +1036,7 @@ class GolemPierre(BaseEnemy):
         elif self.state in (self.ST_STOMP, self.ST_QUAKE):
             self.state = self.ST_CHASE
 
-        # Utilisation de player.hitbox
-        d = 1 if player.hitbox.centerx > self.rect.centerx else -1
+        d = 1 if player.rect.centerx > self.rect.centerx else -1
         self.facing_right = (d == 1)
 
         if self.state == self.ST_CHASE:
@@ -1050,8 +1061,7 @@ class GolemPierre(BaseEnemy):
                 self.state        = self.ST_CHASE
 
     def _do_quake(self, player):
-        # Utilisation de player.hitbox
-        dist = self.distance_to(player.hitbox)
+        dist = self.distance_to(player.rect)
         if dist <= self.QUAKE_RANGE:
             player.take_damage(self.QUAKE_DAMAGE)
             player.slow_timer  = self.QUAKE_SLOW_DUR
