@@ -20,7 +20,7 @@ from monstre import (
     EspritFeu, EspritGlace, EspritFoudre, EspritNature,
     GolemPierre, Fox, Deer, GoblinLancier, Gorgon, MechaGolem,
 )
-from config import ROOT_DIR
+from config import ROOT_DIR, format_time
 import os
 
 #DEFINITON CONSTANTE##################################################################
@@ -350,6 +350,7 @@ class Game:
         self.spawn_from_glace_point = None
         self.spawn_from_lave_point = None
         self.pnj_boss_pos = None
+        self.play_time = 0.0
 
         # Joueur local initial (sera repositionné par load_map)
         self.player = Player((200, 200), self.sound_manager, self.menu.keybinds)
@@ -604,6 +605,7 @@ class Game:
         self.load_map('assets/maps/ZoneLave.tmx')
 
     def load_game(self, slot):
+        is_same_slot = (getattr(self, 'current_save_slot', None) == slot)
         self.current_save_slot = slot
         filename = f"save_{slot}.json"
         if os.path.exists(filename):
@@ -616,6 +618,13 @@ class Game:
                 # Restore game state
                 self.score = data.get('score', 0)
                 self.kill_count = data.get('kill_count', 0)
+                
+                loaded_play_time = data.get('play_time', 0.0)
+                if is_same_slot and hasattr(self, 'play_time'):
+                    self.play_time = max(self.play_time, loaded_play_time)
+                else:
+                    self.play_time = loaded_play_time
+                    
                 self.boss_glace_dead = data.get('boss_glace_dead', False)
                 self.boss_lave_dead = data.get('boss_lave_dead', False)
                 
@@ -646,6 +655,7 @@ class Game:
             # Start fresh
             self.score = 0
             self.kill_count = 0
+            self.play_time = 0.0
             self.boss_glace_dead = False
             self.boss_lave_dead = False
             self.killed_mobs.clear()
@@ -674,7 +684,8 @@ class Game:
             'kill_count': self.kill_count,
             'boss_glace_dead': self.boss_glace_dead,
             'boss_lave_dead': self.boss_lave_dead,
-            'killed_mobs': killed_list
+            'killed_mobs': killed_list,
+            'play_time': self.play_time
         }
         
         try:
@@ -939,7 +950,8 @@ class Game:
             self._network_update(dt)
 
         if not self.is_paused:
-
+            if getattr(self, 'game_started', False) and not self.boss_glace_dead and self.player.hp_current > 0:
+                self.play_time += dt * 1000.0
             # Joueur local (le client ne contrôle son perso que si rôle client,
             # le host contrôle le sien normalement)
             if self.player.hp_current > 0:
@@ -1032,6 +1044,24 @@ class Game:
                     if hasattr(m, 'attack_state') and mob_type == 'Glacius':
                         self.boss_glace_dead = True
                         self.boss_death_pos = (m.rect.centerx, m.rect.bottom - 64)
+                        
+                        # Handle best time
+                        filepath = os.path.join(ROOT_DIR, "best_time.json")
+                        old_best = None
+                        if os.path.exists(filepath):
+                            try:
+                                with open(filepath, "r") as f:
+                                    old_best = json.load(f).get("best_time")
+                            except:
+                                pass
+                        if old_best is None or self.play_time < old_best:
+                            try:
+                                with open(filepath, "w") as f:
+                                    json.dump({"best_time": self.play_time}, f)
+                                self.menu.load_best_time()
+                            except:
+                                pass
+                        
                         msg = "Bravo, tu as vaincu le boss !|Je te téléporte à la porte suivante."
                         npc = NPC(self.boss_death_pos, msg, [self.visibles_sprites, self.npc_sprites], on_end_callback=self.teleport_from_boss)
                     elif hasattr(m, 'attack_state') and mob_type == 'Pyros':
@@ -1217,6 +1247,10 @@ class Game:
             score_txt = self.font_hud.render(
                 f"Score : {self.score}   Kills : {self.kill_count}", True, WHITE)
             self.screen.blit(score_txt, (SCREEN_WIDTH - score_txt.get_width() - 20, 20))
+
+            if getattr(self, 'game_started', False):
+                timer_txt = self.font_hud.render(format_time(self.play_time), True, YELLOW)
+                self.screen.blit(timer_txt, (SCREEN_WIDTH // 2 - timer_txt.get_width() // 2, 20))
 
             if self.player.hp_current <= 0:
                 if self.death_time is None:

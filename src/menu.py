@@ -5,7 +5,7 @@ import os
 import math
 import glob
 import json
-from config import ROOT_DIR
+from config import ROOT_DIR, format_time
 
 # --- CONFIGURATION ---
 WHITE      = (255, 255, 255)
@@ -36,7 +36,7 @@ class Menu:
         self.titre_font  = pygame.font.SysFont(font_names, 100)
         self.smile_font  = pygame.font.SysFont(font_names, 150)
         self.button_font = pygame.font.SysFont(font_names, 35)
-        self.code_font   = pygame.font.SysFont(font_names, 60, bold=True)
+        self.code_font   = pygame.font.SysFont("arial,helvetica,sans", 60, bold=True)
         self.small_font  = pygame.font.SysFont(font_names, 28)
 
         # --- LOGO ---
@@ -126,7 +126,17 @@ class Menu:
         self.btn_tab_volume   = self._btn(center_x - 160, tab_y, 280, 55)
         self.btn_tab_keybinds = self._btn(center_x + 160, tab_y, 280, 55)
 
-        # ── Touches configurables ───────────────────────────────────
+        self.best_time = None
+        self.load_best_time()
+        
+        # Trophy image for top left tab
+        try:
+            self.trophy_image = pygame.image.load(os.path.join(ROOT_DIR, "assets/images/trophy.png")).convert_alpha()
+            self.trophy_image = pygame.transform.scale(self.trophy_image, (64, 64))
+        except (FileNotFoundError, pygame.error):
+            self.trophy_image = pygame.Surface((64, 64), pygame.SRCALPHA)
+            pygame.draw.circle(self.trophy_image, YELLOW, (32, 32), 32)
+            
         self.keybinds = {
             "move_left":  pygame.K_q,
             "move_right": pygame.K_d,
@@ -328,6 +338,20 @@ class Menu:
                     self.screen.blit(self.title_logo, logo_rect)
                 else:
                     self.draw_rainbow_bouncy_text("SMILE", self.smile_font, cx, 200)
+                    
+                # Top left trophy tab
+                trophy_rect = self.trophy_image.get_rect(topleft=(20, 20))
+                self.screen.blit(self.trophy_image, trophy_rect)
+                
+                # Draw the text next to the trophy
+                text_x = trophy_rect.right + 20
+                if self.best_time is not None:
+                    text_str = f"{format_time(self.best_time)}"
+                else:
+                    text_str = "Pas de meilleur temps"
+                
+                surf = self.button_font.render(text_str, True, YELLOW)
+                self.screen.blit(surf, (text_x, trophy_rect.centery - surf.get_height() // 2))
                     
                 # Layout pour 3 boutons au menu
                 self.btn_play.centery     = SCREEN_HEIGHT // 2 - 80
@@ -714,6 +738,16 @@ class Menu:
         self.input_error = ""
         self.state = "multi_join_wait"
         return "multi_join_session"   # main.py s'occupera d'appeler network.join_session
+
+    def load_best_time(self):
+        filepath = os.path.join(ROOT_DIR, "best_time.json")
+        if os.path.exists(filepath):
+            try:
+                with open(filepath, "r") as f:
+                    data = json.load(f)
+                    self.best_time = data.get("best_time")
+            except Exception as e:
+                print(f"Erreur lors du chargement du meilleur temps : {e}")
 
     def load_keybinds(self):
         filepath = os.path.join(ROOT_DIR, "keybinds.json")
