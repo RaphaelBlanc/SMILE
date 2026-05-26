@@ -94,8 +94,8 @@ class Menu:
         self.save_to_delete = None
 
         # ── Boutons choix mode final multi ──────────────────────────
-        self.btn_multi_pvp       = self._btn(center_x, SCREEN_HEIGHT // 2 - 50,  400, 80)
-        self.btn_multi_coop      = self._btn(center_x, SCREEN_HEIGHT // 2 + 70,  400, 80)
+        self.btn_multi_coop      = self._btn(center_x, SCREEN_HEIGHT // 2 - 50,  400, 80)
+        self.btn_multi_pvp       = self._btn(center_x, SCREEN_HEIGHT // 2 + 70,  400, 80)
         self.btn_back_multi_mode = self._btn(center_x, SCREEN_HEIGHT // 2 + 250, 250, 60)
 
         # ── Boutons lobby multi ─────────────────────────────────────
@@ -293,6 +293,8 @@ class Menu:
                 text_color = BLACK
         elif "PARAMETRES" in text_upper:
             text_color = YELLOW
+        elif "COOPERATION" in text_upper or "PVP" in text_upper:
+            text_color = (255, 128, 0)  # ORANGE
         else:
             text_color = WHITE
             
