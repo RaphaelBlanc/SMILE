@@ -321,18 +321,25 @@ class Game:
         # --- CHARGEMENT DE LA MAP ---
         self.load_map('assets/maps/map_glace.tmx')
 
+    def _get_zone_name(self, map_path):
+        if not map_path:
+            return ""
+        if "glace" in map_path:
+            return "glace"
+        if "map1" in map_path or "lave" in map_path:
+            return "lave"
+        if "finale" in map_path:
+            return "finale"
+        return "unknown"
+
     def load_map(self, map_file):
         print(f"Chargement de la map : {map_file}")
         
         # Detect zone change
-        is_same_zone = True
-        if self.current_map_name:
-            if "glace" in self.current_map_name and "glace" not in map_file:
-                is_same_zone = False
-            elif "glace" not in self.current_map_name and "glace" in map_file:
-                is_same_zone = False
-                
-        if not is_same_zone:
+        zone_current = self._get_zone_name(self.current_map_name)
+        zone_next = self._get_zone_name(map_file)
+        
+        if zone_current and zone_current != zone_next:
             self.killed_mobs.clear()
             
         self.current_map_name = map_file
@@ -348,7 +355,6 @@ class Game:
         self.vfx_sprites.empty()
         self.particles.clear()
         self.doors.clear()
-        self.spawn_boss = None
         self.dialogue_box.hide()
 
         full_path = os.path.join(ROOT_DIR, map_file)
@@ -393,19 +399,19 @@ class Game:
 
                 obj_type_lower = obj_type.lower() if obj_type else ''
 
-                if obj_type_lower in ('spawnjoueur', 'spawn_joueur_boss'):
+                if obj_type_lower == 'spawnjoueur':
                     player_spawn = pos
                 elif obj_type_lower == 'spawnjoueurboss':
-                    self.spawn_boss = pos
+                    self.zone_boss_respawn_point = pos
+                    self.zone_boss_map = self.current_map_name
                 elif obj_type_lower == 'spawn_from_boss':
                     self.spawn_from_boss_point = pos
                 elif obj_type_lower in ('pnj_boss', 'pnjboss'):
                     if "map_boss_glace" in map_file:
                         self.pnj_boss_pos = pos
                         if self.boss_glace_dead:
-                            npc_pos = getattr(self, 'boss_death_pos', None) or pos
                             msg = "Bravo, tu as vaincu le boss !|Je te téléporte à la porte suivante."
-                            npc = NPC(npc_pos, msg, [self.visibles_sprites, self.npc_sprites], on_end_callback=self.teleport_from_boss)
+                            npc = NPC(pos, msg, [self.visibles_sprites, self.npc_sprites], on_end_callback=self.teleport_from_boss)
                     else:
                         if not self.boss_glace_dead:
                             msg = "Attention au boss de glace !"
@@ -443,17 +449,17 @@ class Game:
         except ValueError:
             print("INFO : Calque 'Objets' introuvable — monstres non charges depuis Tiled.")
 
-        if not any(self.npc_sprites):
-            NPC((600, 500), "Salut Voyageur ! Attention aux trous !",
-                [self.visibles_sprites, self.npc_sprites])
 
-        if self.killed_by_boss and self.spawn_boss:
-            self.player.set_position(self.spawn_boss)
-            self.respawn_point = self.spawn_boss
+
+        if self.killed_by_boss and hasattr(self, 'zone_boss_respawn_point'):
+            # _respawn will handle setting the position if player dies.
+            # If load_map is called normally (e.g. debugging), just place them there.
+            self.player.set_position(self.zone_boss_respawn_point)
+            self.respawn_point = self.zone_boss_respawn_point
         elif self.coming_from_boss and self.spawn_from_boss_point:
             self.player.set_position(self.spawn_from_boss_point)
             self.respawn_point = self.spawn_from_boss_point
-        elif self.coming_from_teleport and self.spawn_porte_glace_point:
+        elif self.coming_from_teleport and hasattr(self, 'spawn_porte_glace_point'):
             tp_pos = (self.spawn_porte_glace_point[0] - 50, self.spawn_porte_glace_point[1])
             self.player.set_position(tp_pos)
             self.respawn_point = tp_pos
@@ -605,13 +611,16 @@ class Game:
     def _respawn(self):
         """Réinitialise le joueur au dernier point de respawn."""
         self.death_time = None
-        self.player.set_position(self.respawn_point)
-        self.player.hp_current   = self.player.hp_max
-        self.player.vel_y        = 0
+        self.player.hp_current = self.player.hp_max
+        self.player.vel_y = 0
         self.killed_mobs.clear()
-        # Vider les projectiles ennemis pour ne pas mourir immédiatement
-        for ep in list(self.enemy_proj_sprites):
-            ep.kill()
+        
+        if self.killed_by_boss and getattr(self, 'zone_boss_map', None):
+            self.load_map(self.zone_boss_map)
+            self.player.set_position(self.zone_boss_respawn_point)
+            self.respawn_point = self.zone_boss_respawn_point
+        elif self.current_map_name:
+            self.load_map(self.current_map_name)
 
     def _go_to_main_menu(self):
         """Retourne au menu principal sans réinitialiser la partie."""
@@ -754,7 +763,10 @@ class Game:
                 if ep.rect.colliderect(self.player.hitbox) and self.player.hp_current > 0:
                     self.player.take_damage(getattr(ep, 'damage', 10))
                     ep.kill()
-                    self.killed_by_boss = False
+                    if type(ep).__name__ == "BossProjectile":
+                        self.killed_by_boss = True
+                    else:
+                        self.killed_by_boss = False
 
             # VFX + particules
             self.vfx_sprites.update()

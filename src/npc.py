@@ -72,8 +72,13 @@ class NPC(pygame.sprite.Sprite):
             self.player_in_range = True
             if self.is_interacting:
                 current_text = self.messages[self.msg_index]
-                if len(self.messages) > 1 and self.msg_index < len(self.messages) - 1:
+                if self.msg_index < len(self.messages) - 1:
                     current_text += " [E pour suite]"
+                else:
+                    if self.on_end_callback:
+                        current_text += " [E pour y aller]"
+                    else:
+                        current_text += " [E pour fermer]"
                 dialogue_box.show(current_text, owner=self)
             else:
                 dialogue_box.show("Appuyez sur [E] pour interagir", owner=self)

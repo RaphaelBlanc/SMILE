@@ -117,7 +117,7 @@ class BaseEnemy(pygame.sprite.Sprite):
             self.on_death()
 
     def on_death(self):
-        self.kill()
+        pass # Let main.py handle the actual kill() so it can process death logic
 
     def tick_contact_timer(self):
         if self.contact_timer > 0:
@@ -370,7 +370,7 @@ class ChienEnrage(BaseEnemy):
         self.image, _ = self._get_anim_frame("dead", loop=False)
         if getattr(self, 'sound_manager', None):
             self.sound_manager.play("chien_death")
-        self.kill()
+        # Let main.py handle self.kill()
 
     def _do_chase(self, player, obstacles):
         if self.turn_timer > 0:
@@ -706,6 +706,7 @@ class EspritBase(BaseEnemy):
                 self.EXPLOSION_RADIUS,
                 self.vfx_groups
             )
+            self.dead = True
             self.on_death()
             return
 

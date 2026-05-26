@@ -919,7 +919,7 @@ class Glacius(BossBase):
         if not self._tele_done and self._tele_timer>=T["tele_delay"]:
             self._tele_done=True
             # Téléportation derrière le joueur
-            tx=pr.rect.left-self.WIDTH-10
+            tx=pr.left-self.WIDTH-10
             tx=max(50,min(SCREEN_WIDTH-self.WIDTH-50,tx))
             self.rect.x=tx; self.rect.bottom=self.floor_y
             self.vy=0
