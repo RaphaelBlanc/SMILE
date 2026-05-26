@@ -570,6 +570,10 @@ class Game:
         self.camera.offset.x = max(0, min(target_x, self.camera.map_width - SCREEN_WIDTH))
         self.camera.offset.y = max(0, min(target_y, self.camera.map_height - SCREEN_HEIGHT))
 
+        # Auto-save after changing map/zone
+        if getattr(self, 'game_started', False):
+            self.save_game()
+
     def teleport_from_boss(self):
         self.coming_from_teleport = True
         self.load_map('assets/maps/map_glace.tmx')
@@ -836,11 +840,6 @@ class Game:
             self.save_indicator_timer -= 1
 
         if not self.is_paused:
-            if self.game_started and self.current_save_slot:
-                if pygame.time.get_ticks() - self.last_save_time >= 120000:
-                    self.save_game()
-                    self.last_save_time = pygame.time.get_ticks()
-
             if self.is_multi and self.network:
                 # Initialise le timer de message si pas encore fait
                 if getattr(self, 'last_msg_time', 0) == 0:
@@ -1140,11 +1139,11 @@ class Game:
 
             if self.save_indicator_timer > 0:
                 text = self.save_font.render("Sauvegarde automatique...", True, WHITE)
-                self.screen.blit(text, (SCREEN_WIDTH - text.get_width() - 50, 20))
+                self.screen.blit(text, (SCREEN_WIDTH - text.get_width() - 50, 50))
                 
                 t = pygame.time.get_ticks() / 200.0
                 cx_wheel = SCREEN_WIDTH - 25
-                cy_wheel = 30
+                cy_wheel = 60
                 radius = 10
                 rect = pygame.Rect(cx_wheel - radius, cy_wheel - radius, radius * 2, radius * 2)
                 start_angle = t
