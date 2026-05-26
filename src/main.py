@@ -745,6 +745,9 @@ class Game:
         # Crée le fantôme du joueur distant
         self.remote_player = RemotePlayer(self.player.rect.topleft)
         self.visibles_sprites.add(self.remote_player)
+        
+        if getattr(self, 'network', None) and self.network.role == "host":
+            self.network._send({"action": "start_multi_game"})
 
     def _network_update(self, dt):
         """Envoi/réception réseau — appelé chaque frame quand multi actif."""
@@ -1461,8 +1464,17 @@ class Game:
                 elif (self.network.role == "client"
                         and self.menu.state == "multi_join_wait"
                         and self.network.peer_joined):
-                    print("Code valide ! Choix du mode multi.")
-                    self.menu.state = "multi_mode_final"
+                    print("Code valide ! En attente de l'hôte.")
+                    self.menu.state = "multi_client_wait_start"
+                    
+                # CLIENT en attente du démarrage par l'hôte
+                elif (self.network.role == "client"
+                        and self.menu.state == "multi_client_wait_start"):
+                    for msg in self.network.poll():
+                        if msg.get("action") == "start_multi_game":
+                            print("L'hôte a lancé la partie !")
+                            self._launch_multi_game()
+                            break
 
             self.update(dt)
             self.draw()

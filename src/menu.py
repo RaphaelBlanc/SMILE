@@ -499,6 +499,19 @@ class Menu:
             self.draw_button(self.btn_multi_pvp,  "PVP",         BLUE_MENU, BLUE_HOVER, mouse_pos)
             self.draw_button(self.btn_back_multi_mode, "RETOUR", GREY,      WHITE,      mouse_pos)
 
+        # ── Client en attente du lancement par l'hôte ───────────────
+        elif self.state == "multi_client_wait_start":
+            self.draw_text("EN ATTENTE DU CHEF DE LA PARTIE", self.titre_font, YELLOW, cx, 250)
+            
+            # Roue qui tourne
+            t = pygame.time.get_ticks() / 200.0
+            radius = 30
+            rect = pygame.Rect(cx - radius, 450 - radius, radius * 2, radius * 2)
+            import math
+            pygame.draw.arc(self.screen, WHITE, rect, t, t + math.pi, 6)
+            
+            self.draw_button(self.btn_back_multi_mode, "RETOUR", GREY, WHITE, mouse_pos)
+
         # ── Lobby multi : choisir host ou client ────────────────────
         elif self.state == "multi_lobby":
             self.draw_text("MULTIJOUEUR", self.titre_font, YELLOW, cx, 250)
@@ -535,7 +548,7 @@ class Menu:
             border_color = BLUE_HOVER if self.input_active else GREY
             pygame.draw.rect(self.screen, (20, 20, 60), self.input_rect, border_radius=10)
             pygame.draw.rect(self.screen, border_color, self.input_rect, 3, border_radius=10)
-            display = self.input_code if self.input_code else "_ _ _ _"
+            display = self.input_code if self.input_code else "_ _ _ _ _ _"
             self.draw_text(display, self.code_font, WHITE, cx, self.input_rect.centery)
 
             if self.input_error:
@@ -637,6 +650,11 @@ class Menu:
                     return "launch_multi_coop"
                 if self.btn_multi_pvp.collidepoint(event.pos):
                     pass # Ne fait rien pour l'instant
+                if self.btn_back_multi_mode.collidepoint(event.pos):
+                    return "disconnect_multi"
+
+            # ── multi_client_wait_start ─────────────────────────────
+            elif self.state == "multi_client_wait_start":
                 if self.btn_back_multi_mode.collidepoint(event.pos):
                     return "disconnect_multi"
 
