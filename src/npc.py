@@ -47,10 +47,73 @@ class DialogueBox:
             self.screen.blit(text_surf, text_rect)
 
 class NPC(pygame.sprite.Sprite):
-    def __init__(self, pos, message, groups, on_end_callback=None):
+    def __init__(self, pos, message, groups, on_end_callback=None, name=None, pnj_type=None):
         super().__init__(groups)
-        self.image = pygame.Surface((32, 64))
-        self.image.fill((0, 0, 255)) # Bleu pour le PNJ
+        
+        # Déterminer quel sprite utiliser en fonction du nom ou du pnj_type
+        sprite_filename = "vieux.png" # Fallback par défaut
+        
+        name_lower = str(name).lower() if name else ""
+        type_lower = str(pnj_type).lower() if pnj_type else ""
+        
+        if "chevalier" in name_lower or "porte" in type_lower or "glace" in type_lower:
+            sprite_filename = "chevalier.png"
+        elif "boss" in name_lower or "boss" in type_lower:
+            sprite_filename = "geant_de_glace.png"
+        elif "alchimiste" in name_lower or "magic" in name_lower:
+            sprite_filename = "alchimiste.png"
+        elif "enfant" in name_lower:
+            sprite_filename = "enfants.png"
+        elif "nain" in name_lower or "savant" in name_lower:
+            sprite_filename = "nain_savants.png"
+        elif "orc" in name_lower or "garde" in name_lower:
+            sprite_filename = "orc_armure.png"
+        elif "pretre" in name_lower or "demon" in name_lower:
+            sprite_filename = "pretre_demoniaque.png"
+        elif "sdf" in name_lower or "pauvre" in name_lower:
+            sprite_filename = "sdf.png"
+        elif "maitre" in name_lower or "esclave" in name_lower:
+            sprite_filename = "maitre_esclave.png"
+        elif "vieux" in name_lower or "sage" in name_lower:
+            sprite_filename = "vieux.png"
+        else:
+            if "pnj_boss" in type_lower or "pnjboss" in type_lower:
+                sprite_filename = "geant_de_glace.png"
+            elif "pnjporteglace" in type_lower:
+                sprite_filename = "chevalier.png"
+            else:
+                sprite_list = [
+                    "alchimiste.png", "chevalier.png", "enfants.png", 
+                    "maitre_esclave.png", "nain_savants.png", "orc_armure.png", 
+                    "pretre_demoniaque.png", "sdf.png", "vieux.png"
+                ]
+                h_idx = int(pos[0] + pos[1]) % len(sprite_list)
+                sprite_filename = sprite_list[h_idx]
+
+        # Charger l'image depuis le dossier assets
+        import os
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        path_option1 = os.path.join(current_dir, "assets", "images", "pnj", sprite_filename)
+        path_option2 = os.path.join(os.path.dirname(current_dir), "assets", "images", "pnj", sprite_filename)
+        path = path_option1 if os.path.isfile(path_option1) else path_option2
+        
+        if sprite_filename == "geant_de_glace.png":
+            target_size = (96, 120)
+        else:
+            target_size = (64, 88)
+            
+        if os.path.isfile(path):
+            try:
+                img = pygame.image.load(path).convert_alpha()
+                self.image = pygame.transform.scale(img, target_size)
+            except Exception as e:
+                print(f"⚠️ Erreur de chargement PNJ {sprite_filename} : {e}")
+                self.image = pygame.Surface(target_size)
+                self.image.fill((0, 0, 255))
+        else:
+            self.image = pygame.Surface(target_size)
+            self.image.fill((0, 0, 255))
+            
         self.rect = self.image.get_rect(topleft=pos)
         
         self.set_message(message)
