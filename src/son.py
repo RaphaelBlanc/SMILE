@@ -22,6 +22,9 @@ class SoundManager:
 
         self.music_intro_path = os.path.join(ROOT_DIR, "assets/audio/smile_fire_intro.mp3")
         self.music_boucle_path = os.path.join(ROOT_DIR, "assets/audio/smile_fire_boucle.mp3")
+        self.music_frozen_intro_path  = os.path.join(ROOT_DIR, "assets/audio/smile_frozen_intro.mp3")
+        self.music_frozen_boucle_path = os.path.join(ROOT_DIR, "assets/audio/smile_frozen_boucle.mp3")
+        self._current_boucle = self.music_boucle_path  # feu par défaut
 
         try:
             pygame.mixer.music.load(self.music_intro_path)
@@ -35,6 +38,7 @@ class SoundManager:
         pass
 
     def start_music(self):
+        self.play_world_music('feu')
         try:
             pygame.mixer.music.stop()
             pygame.mixer.music.load(self.music_intro_path)
@@ -70,3 +74,24 @@ class SoundManager:
         for name, sound_data in self.sounds.items():
             if sound_data and sound_data["sound"]:
                 sound_data["sound"].set_volume(sound_data["base_volume"] * self.global_volume)
+
+    def play_world_music(self, world):
+        try:
+            pygame.mixer.music.stop()
+            if world == 'glace':
+                intro = self.music_frozen_intro_path
+                boucle = self.music_frozen_boucle_path
+            else:
+                intro = self.music_intro_path
+                boucle = self.music_boucle_path
+
+            self._current_boucle = boucle
+            pygame.mixer.music.load(intro)
+            pygame.mixer.music.queue(boucle)
+            pygame.mixer.music.set_volume(self.music_base_volume * self.global_volume)
+            pygame.mixer.music.play()
+            pygame.mixer.music.set_endevent(pygame.USEREVENT + 1)
+            self._loop_event = pygame.USEREVENT + 1
+        except pygame.error as e:
+            print(f"Erreur musique monde {world} : {e}")
+                
