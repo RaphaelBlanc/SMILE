@@ -312,6 +312,7 @@ class Game:
         self.remote_player = None          # RemotePlayer (l'autre joueur)
         self.net_timer     = 0             # compteur pour envoi état (host)
         self.pending_damage_events = []
+        self.last_transition_flag  = ""
 
         # --- SON / MENU ---
         self.sound_manager = SoundManager()
@@ -539,29 +540,35 @@ class Game:
 
 
 
+        self.last_transition_flag = ""
         if self.killed_by_boss and hasattr(self, 'zone_boss_respawn_point'):
-            # _respawn will handle setting the position if player dies.
-            # If load_map is called normally (e.g. debugging), just place them there.
+            self.last_transition_flag = "boss"
             self.player.set_position(self.zone_boss_respawn_point)
             self.respawn_point = self.zone_boss_respawn_point
         elif self.coming_from_boss and self.spawn_from_boss_point:
+            self.last_transition_flag = "boss"
             self.player.set_position(self.spawn_from_boss_point)
             self.respawn_point = self.spawn_from_boss_point
         elif self.coming_from_glace and self.spawn_from_glace_point:
+            self.last_transition_flag = "glace"
             self.player.set_position(self.spawn_from_glace_point)
             self.respawn_point = self.spawn_from_glace_point
         elif self.coming_from_lave and self.spawn_from_lave_point:
+            self.last_transition_flag = "lave"
             self.player.set_position(self.spawn_from_lave_point)
             self.respawn_point = self.spawn_from_lave_point
         elif self.coming_from_teleport and getattr(self, 'spawn_porte_glace_point', None):
+            self.last_transition_flag = "tp_glace"
             tp_pos = (self.spawn_porte_glace_point[0] - 50, self.spawn_porte_glace_point[1] - 150)
             self.player.set_position(tp_pos)
             self.respawn_point = tp_pos
         elif getattr(self, 'coming_from_teleport_lave', False) and getattr(self, 'spawn_porte_to_glace_point', None):
+            self.last_transition_flag = "tp_lave"
             safe_pos = (self.spawn_porte_to_glace_point[0] - 100, self.spawn_porte_to_glace_point[1] - 150)
             self.player.set_position(safe_pos)
             self.respawn_point = safe_pos
         else:
+            self.last_transition_flag = "none"
             self.player.set_position(player_spawn)
             self.respawn_point = player_spawn
             
@@ -584,10 +591,16 @@ class Game:
 
     def teleport_from_boss(self):
         self.coming_from_teleport = True
+        if self.is_multi and self.network and self.network.role == "client":
+            self.network._send({"action": "request_map_change", "dest": "assets/maps/map_glace.tmx", "req_flag": "tp_glace"})
+            return
         self.load_map('assets/maps/map_glace.tmx')
 
     def teleport_from_boss_lave(self):
         self.coming_from_teleport_lave = True
+        if self.is_multi and self.network and self.network.role == "client":
+            self.network._send({"action": "request_map_change", "dest": "assets/maps/ZoneLave.tmx", "req_flag": "tp_lave"})
+            return
         self.load_map('assets/maps/ZoneLave.tmx')
 
     def load_game(self, slot):
@@ -733,6 +746,7 @@ class Game:
                 self.net_timer = 0
                 state = {
                     "map_name": getattr(self, "current_map_name", ""),
+                    "map_flag": getattr(self, "last_transition_flag", ""),
                     "boss_glace_dead": getattr(self, "boss_glace_dead", False),
                     "boss_lave_dead": getattr(self, "boss_lave_dead", False),
                     "p1_x":  self.player.rect.x,
@@ -777,6 +791,12 @@ class Game:
                 elif msg.get("action") == "damage_mob":
                     self._respawn()
                 elif msg.get("action") == "request_map_change":
+                    req_flag = msg.get("req_flag", "none")
+                    if req_flag == "boss": self.coming_from_boss = True
+                    elif req_flag == "glace": self.coming_from_glace = True
+                    elif req_flag == "lave": self.coming_from_lave = True
+                    elif req_flag == "tp_glace": self.coming_from_teleport = True
+                    elif req_flag == "tp_lave": self.coming_from_teleport_lave = True
                     self.load_map(msg.get("dest"))
 
         # ── CLIENT : envoie son état (P2), reçoit l'état du host (P1) ──────
@@ -802,7 +822,13 @@ class Game:
                     if msg.get("boss_lave_dead"):
                         self.boss_lave_dead = True
                     remote_map = msg.get("map_name")
-                    if remote_map and remote_map != getattr(self, "current_map_name", ""):
+                    remote_flag = msg.get("map_flag", "")
+                    if remote_map and getattr(self, 'current_map_name', "") != remote_map:
+                        if remote_flag == "boss": self.coming_from_boss = True
+                        elif remote_flag == "glace": self.coming_from_glace = True
+                        elif remote_flag == "lave": self.coming_from_lave = True
+                        elif remote_flag == "tp_glace": self.coming_from_teleport = True
+                        elif remote_flag == "tp_lave": self.coming_from_teleport_lave = True
                         self.load_map(remote_map)
 
                     # Le joueur distant pour le client = p1 dans l'état host
@@ -895,8 +921,8 @@ class Game:
             if getattr(self, 'last_msg_time', 0) == 0:
                 self.last_msg_time = pygame.time.get_ticks()
             
-            # Déconnexion par timeout (3 secondes sans message)
-            if pygame.time.get_ticks() - self.last_msg_time > 3000:
+            # Déconnexion par timeout (15 secondes sans message, compense les temps de chargement)
+            if pygame.time.get_ticks() - self.last_msg_time > 15000:
                 self.network.connected = False
 
             if not self.network.connected:
@@ -1301,7 +1327,11 @@ class Game:
                                     self.coming_from_lave = True
                                 
                                 if self.is_multi and self.network and self.network.role == "client":
-                                    self.network._send({"action": "request_map_change", "dest": door['dest']})
+                                    req_flag = "none"
+                                    if getattr(self, 'coming_from_boss', False): req_flag = "boss"
+                                    elif getattr(self, 'coming_from_glace', False): req_flag = "glace"
+                                    elif getattr(self, 'coming_from_lave', False): req_flag = "lave"
+                                    self.network._send({"action": "request_map_change", "dest": door['dest'], "req_flag": req_flag})
                                 else:
                                     self.load_map(door['dest'])
                                 break
