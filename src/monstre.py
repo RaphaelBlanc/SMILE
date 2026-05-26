@@ -716,6 +716,8 @@ class EspritBase(BaseEnemy):
         if self.state in (self.ST_WANDER, self.ST_RETURN):
             if dist < self.DETECT_RANGE:
                 self.state = self.ST_CHASE
+                if getattr(self, 'sound_manager', None):
+                    self.sound_manager.play("spirit_detect")
 
         elif self.state == self.ST_CHASE:
             if dist > self.LOSE_RANGE:
@@ -772,6 +774,10 @@ class EspritBase(BaseEnemy):
             if self.vy > 0:
                 self.rect.bottom = hit.rect.top
                 self.vy = 0; self.on_floor = True
+
+    def on_death(self):
+        if getattr(self, 'sound_manager', None):
+            self.sound_manager.play("spirit_death")
 
 # ── Esprit du Feu ──────────────────────────────────────────────
 

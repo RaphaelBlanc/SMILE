@@ -23,6 +23,8 @@ class SoundManager:
         self.load_sound("gobelin_attack", os.path.join(ROOT_DIR, "assets/audio/gobelin_attack.mp3"), volume=0.05)
         self.load_sound("gobelin_death",  os.path.join(ROOT_DIR, "assets/audio/gobelin_death.mp3"),  volume=0.2)
         self.load_sound("gobelin_archer_attack", os.path.join(ROOT_DIR, "assets/audio/gobelin_archer_attack.mp3"), volume = 0.2)
+        self.load_sound("spirit_detect", os.path.join(ROOT_DIR, "assets/audio/spirit_detect.mp3"), volume=0.10)
+        self.load_sound("spirit_death",  os.path.join(ROOT_DIR, "assets/audio/spirit_death.mp3"),  volume=0.5)
 
         self.music_intro_path = os.path.join(ROOT_DIR, "assets/audio/smile_fire_intro.mp3")
         self.music_boucle_path = os.path.join(ROOT_DIR, "assets/audio/smile_fire_boucle.mp3")
