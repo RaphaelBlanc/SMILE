@@ -612,7 +612,7 @@ class Game:
                         dest = 'assets/maps/map_glace.tmx'
                         self.spawn_porte_to_glace_point = pos
                     elif obj_type_lower == 'porteglace':
-                        dest = 'assets/maps/ZoneTerre.tmx'
+                        dest = 'assets/maps/ZoneMage.tmx'
                     elif obj_type_lower in ('porte_to_zone_1', 'porte_to zone_1'):
                         dest = 'assets/maps/Zone1.tmx'
                     elif obj_type_lower == 'porte_boss_lave':
