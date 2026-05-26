@@ -879,29 +879,29 @@ class Game:
         if self.save_indicator_timer > 0:
             self.save_indicator_timer -= 1
 
+        if self.is_multi and self.network:
+            # Initialise le timer de message si pas encore fait
+            if getattr(self, 'last_msg_time', 0) == 0:
+                self.last_msg_time = pygame.time.get_ticks()
+            
+            # Déconnexion par timeout (3 secondes sans message)
+            if pygame.time.get_ticks() - self.last_msg_time > 3000:
+                self.network.connected = False
+
+            if not self.network.connected:
+                print("Déconnexion détectée, retour au menu...")
+                self.is_multi = False
+                self.game_started = False
+                self.is_paused = True
+                self.menu.state = "main"
+                self.network = None
+                self.last_msg_time = 0
+                return
+
+            # Réseau - doit toujours tourner pour éviter le timeout
+            self._network_update(dt)
+
         if not self.is_paused:
-            if self.is_multi and self.network:
-                # Initialise le timer de message si pas encore fait
-                if getattr(self, 'last_msg_time', 0) == 0:
-                    self.last_msg_time = pygame.time.get_ticks()
-                
-                # Déconnexion par timeout (3 secondes sans message)
-                if pygame.time.get_ticks() - self.last_msg_time > 3000:
-                    self.network.connected = False
-
-                if not self.network.connected:
-                    print("Déconnexion détectée, retour au menu...")
-                    self.is_multi = False
-                    self.game_started = False
-                    self.is_paused = True
-                    self.menu.state = "main"
-                    self.network = None
-                    self.last_msg_time = 0
-                    return
-
-            # Réseau
-            if self.is_multi:
-                self._network_update(dt)
 
             # Joueur local (le client ne contrôle son perso que si rôle client,
             # le host contrôle le sien normalement)
