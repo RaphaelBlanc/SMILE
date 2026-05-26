@@ -624,12 +624,14 @@ class Game:
                         floor_y = pos[1] + getattr(obj, 'height', 32)
                         boss = Glacius(pos, self.obstacle_sprites, floor_y)
                         boss.id = getattr(obj, 'id', obj_index)
+                        boss.sound_manager = self.sound_manager
                         self.monster_sprites.add(boss)
                 elif obj_type_lower == 'spawn_boss_lave':
                     if not self.boss_lave_dead:
                         floor_y = pos[1] + getattr(obj, 'height', 32)
                         boss = Pyros(pos, self.obstacle_sprites, floor_y)
                         boss.id = getattr(obj, 'id', obj_index)
+                        boss.sound_manager = self.sound_manager
                         self.monster_sprites.add(boss)
                     else:
                         self.pnj_boss_pos = pos

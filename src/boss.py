@@ -315,6 +315,14 @@ class BossBase(pygame.sprite.Sprite):
         self.rect         = self.image.get_rect(topleft=pos)
         self._font_warn   = pygame.font.SysFont("Arial Black", 30, bold=True)
 
+        # Son — assigné depuis main.py après création
+        self.sound_manager = None
+
+    def _play(self, name):
+        """Joue un son si le sound_manager est disponible."""
+        if self.sound_manager:
+            self.sound_manager.play(name)
+
     # ── Surcharger dans chaque boss ───────────────────────────────────────────
     def _get_attack_pool(self):      return []
     def _get_windup(self, name):     return 900
@@ -331,6 +339,7 @@ class BossBase(pygame.sprite.Sprite):
         self.attack_name  = random.choice(available)
         self.attack_state = WINDUP
         self.windup_timer = self._get_windup(self.attack_name)
+        self._play("boss_detect")
 
     def _end_attack(self, name=None):
         n = name or self.attack_name
@@ -762,6 +771,7 @@ class Pyros(BossBase):
             self.projectiles.add(BossProjectile(
                 (cx,self.rect.centery+30),self._fire_dir*T["fire_spd"],0,
                 radius=T["fire_r"],color=(255,100,20),max_lifetime=3800))
+            self._play("boss_projectile")
         if self._fire_count>=T["fire_count"]:
             self._fire_timer+=0
             if self._fire_timer>=300: self._end_attack()
@@ -776,6 +786,7 @@ class Pyros(BossBase):
             vy=random.uniform(T["fw_vmin"],T["fw_vmax"])
             self.projectiles.add(BossProjectile(
                 (x,-40),0,vy,radius=T["fw_r"],color=(255,80,0),max_lifetime=3200))
+            self._play("boss_projectile")
         if self._fw_count>=T["fw_cols"]:
             self.exec_timer-=dt_ms
             if self.exec_timer<=500: self._end_attack()
@@ -793,6 +804,7 @@ class Pyros(BossBase):
                 self.projectiles.add(BossProjectile(
                     (cx,self.rect.centery+20),d*3,0,
                     radius=T["grab_fist_r"],color=BROWN,max_lifetime=600))
+                self._play("boss_hit")
         else:
             self.exec_timer-=dt_ms
             if self.exec_timer<=0: self._end_attack()
@@ -808,6 +820,7 @@ class Pyros(BossBase):
                 (self.rect.centerx,self.rect.top-10),
                 math.cos(rad)*spd,math.sin(rad)*spd,
                 radius=T["meteor_r"],color=GREY,use_gravity=True,max_lifetime=4000))
+            self._play("boss_projectile")
         if self._meteor_n>=T["meteor_n"]:
             self.exec_timer-=dt_ms
             if self.exec_timer<=600: self._end_attack()
@@ -1045,10 +1058,10 @@ class Glacius(BossBase):
 
     def _ex_punch(self, dt_ms):
         if self.exec_timer == 900: 
-            # Massively reduced punch range: pulled closer to center, smaller radius
             cx = self.rect.centerx + 130 if self.facing_right else self.rect.centerx - 130
             p = BossProjectile((cx, self.rect.centery), 0, 0, radius=30, color=ICE_BLUE, max_lifetime=150)
             self.projectiles.add(p)
+            self._play("boss_hit")
             
         self.exec_timer -= dt_ms
         if self.exec_timer <= 0:
@@ -1063,6 +1076,7 @@ class Glacius(BossBase):
             import pygame
             pygame.draw.polygon(p.image, (255,255,255), [(30, 60), (0, 0), (60, 0)])
             self.projectiles.add(p)
+            self._play("boss_projectile")
             
         self.exec_timer -= dt_ms
         if self.exec_timer <= 0:
@@ -1075,6 +1089,8 @@ class Glacius(BossBase):
             self.shockwaves.add(sw1)
             self._screen_shake_flag = True
             self._emit_dust(50, [ICE_BLUE, WHITE])
+            self._play("boss_hit")
+            self._play("boss_hit")
             
         self.exec_timer -= dt_ms
         if self.exec_timer <= 0:
@@ -1363,6 +1379,7 @@ class Granit(BossBase):
             self.shockwaves.add(sw2)
             self._screen_shake_flag=True; self._emit_dust(25,[(180,160,130),(255,100,20)])
             self.exec_timer=800
+            self._play("boss_hit")
         self.exec_timer-=dt_ms
         if self.exec_timer<=0:
             self._quake_done=False; self._end_attack()
@@ -1377,6 +1394,7 @@ class Granit(BossBase):
             vy=random.uniform(T["hail_vmin"],T["hail_vmax"])
             self.projectiles.add(BossProjectile(
                 (x,-50),0,vy,radius=T["hail_r"],color=STONE,max_lifetime=3000))
+            self._play("boss_projectile")
         if self._hail_n>=T["hail_n"]:
             self.exec_timer-=dt_ms
             if self.exec_timer<=500:
@@ -1400,6 +1418,7 @@ class Granit(BossBase):
             self.projectiles.add(BossProjectile(
                 (x,-40),random.uniform(-1.5,1.5),spd,
                 radius=20,color=STONE,use_gravity=False,max_lifetime=3000))
+            self._play("boss_projectile")
         if self._aval_n>=T["aval_n"]:
             self.exec_timer-=dt_ms
             if self.exec_timer<=400: self._end_attack()
@@ -1542,6 +1561,7 @@ class Ventus(BossBase):
             self.projectiles.add(BossProjectile(
                 (cx,self.rect.centery+20),self._tornado_dir*T["tornado_spd"],0,
                 radius=T["tornado_r"],color=WIND_COL,max_lifetime=2200))
+            self._play("boss_projectile")
         self.exec_timer-=dt_ms
         if self.exec_timer<=2800: self._end_attack()
 
@@ -1554,6 +1574,7 @@ class Ventus(BossBase):
                 # Éclair instantané = grand projectile vertical rapide
                 self.projectiles.add(BossProjectile(
                     (m.x,-10),0,40,radius=14,color=ELEC_COL,max_lifetime=600))
+                self._play("boss_projectile")
         all_done=all(m.fired for m in self._lightning_marks)
         if all_done:
             self.exec_timer-=dt_ms
@@ -1585,6 +1606,7 @@ class Ventus(BossBase):
                     (self.rect.centerx,self.rect.centery+dy),
                     d*self.TUNING["push_force"][self.phase],0,
                     radius=24,color=WIND_COL,max_lifetime=1500))
+            self._play("boss_hit")
         self.exec_timer-=dt_ms
         if self.exec_timer<=2500: self._end_attack()
 
@@ -1770,7 +1792,10 @@ class Mutant(BossBase):
             self._regen_t+=dt_ms
             if self._regen_t>=self.TUNING["regen_ivl"]:
                 self._regen_t=0
+                old_hp = self.hp
                 self.hp=min(self.HP_MAX, self.hp+self.TUNING["regen_rate"])
+                if self.hp > old_hp:
+                    self._play("boss_regen")
         if   n=="pyros_slam":       self._ex_mut_slam(dt_ms)
         elif n=="glacius_shards":   self._ex_mut_shards(dt_ms)
         elif n=="granit_quake":     self._ex_mut_quake(dt_ms)
@@ -1788,6 +1813,7 @@ class Mutant(BossBase):
             self.shockwaves.add(ShockWave(self.rect.centerx,self.floor_y,20,100,LAVA))
             self.shockwaves.add(ShockWave(self.rect.centerx,self.floor_y,16,80,ICE_BLUE))
             self._screen_shake_flag=True; self._emit_dust(30)
+            self._play("boss_hit")
             # Aussi des éclats de glace
             for a in range(0,360,45):
                 rad=math.radians(a)
@@ -1795,6 +1821,7 @@ class Mutant(BossBase):
                     (self.rect.centerx,self.floor_y-20),
                     math.cos(rad)*6,math.sin(rad)*6,
                     radius=14,color=ICE_BLUE,max_lifetime=1200))
+            self._play("boss_projectile")
             if self._slam_warning: self._slam_warning.done=True
         if self._slam_landed:
             self.exec_timer-=dt_ms
@@ -1810,6 +1837,7 @@ class Mutant(BossBase):
                 self._shard_dir*8,0,radius=26,color=(255,100,20),max_lifetime=3000))
             self.projectiles.add(BossProjectile((cx,self.rect.centery-20),
                 self._shard_dir*6,0,radius=20,color=ICE_BLUE,max_lifetime=3000))
+            self._play("boss_projectile")
         if self._shard_n>=5:
             self.exec_timer-=dt_ms
             if self.exec_timer<=400: self._end_attack()
@@ -1825,6 +1853,8 @@ class Mutant(BossBase):
                 self.projectiles.add(BossProjectile((x,-40),0,random.uniform(12,18),
                     radius=22,color=STONE,max_lifetime=3000))
             self._screen_shake_flag=True; self.exec_timer=900
+            self._play("boss_hit")
+            self._play("boss_projectile")
         self.exec_timer-=dt_ms
         if self.exec_timer<=0:
             self._mut_quake_done=False; self._end_attack()
@@ -1836,6 +1866,7 @@ class Mutant(BossBase):
                 m.fired=True
                 self.projectiles.add(BossProjectile((m.x,-10),0,45,
                     radius=16,color=ELEC_COL,max_lifetime=500))
+                self._play("boss_projectile")
         if all(m.fired for m in self._lightning_marks):
             self.exec_timer-=dt_ms
             if self.exec_timer<=400: self._end_attack()
