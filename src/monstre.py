@@ -1424,7 +1424,7 @@ class Deer(BaseEnemy):
 
         surf = self.animator.get_current_frame(dt, anim_state, loop=loop)
         
-        if self.facing_right:
+        if not self.facing_right:
             surf = pygame.transform.flip(surf, True, False)
             
         frames = self.animator.animations.get(anim_state, [])
@@ -1568,7 +1568,7 @@ class Fox(BaseEnemy):
 
         surf = self.animator.get_current_frame(dt, anim_state, loop=loop)
         
-        if self.facing_right:
+        if not self.facing_right:
             surf = pygame.transform.flip(surf, True, False)
             
         frames = self.animator.animations.get(anim_state, [])

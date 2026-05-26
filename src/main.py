@@ -1104,12 +1104,12 @@ class Game:
             if self.is_multi and getattr(self, 'remote_player', None):
                 self.remote_player.update(dt)
                 
-                # Check transition to Zone1
-                if pygame.sprite.spritecollideany(self.player, self.transition_sprites):
-                    if self.is_multi and self.network and self.network.role == "client":
-                        self.network._send({"action": "request_map_change", "dest": 'assets/maps/Zone1.tmx'})
-                    else:
-                        self.load_map('assets/maps/Zone1.tmx')
+            # Check transition to Zone1 (Single-player or Host loads directly, Client requests)
+            if pygame.sprite.spritecollideany(self.player, self.transition_sprites):
+                if self.is_multi and self.network and self.network.role == "client":
+                    self.network._send({"action": "request_map_change", "dest": 'assets/maps/Zone1.tmx'})
+                else:
+                    self.load_map('assets/maps/Zone1.tmx')
 
             # NPC
             for npc in self.npc_sprites:
