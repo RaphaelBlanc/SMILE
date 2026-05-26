@@ -4,6 +4,8 @@ import pygame
 import sys
 import random
 import math
+import json
+import os
 import cv2
 from pytmx.util_pygame import load_pygame
 from player import Player
@@ -261,6 +263,12 @@ class Game:
         self.kill_count   = 0
         self.particles    = []
 
+        # --- SAUVEGARDE ---
+        self.current_save_slot = None
+        self.last_save_time = 0
+        self.save_indicator_timer = 0
+        self.save_font = pygame.font.SysFont("consolas", 20, bold=True)
+
         # Screen-shake pour GolemPierre
         self.shake_ref = [0]
         self.mob_counter = 0
@@ -475,6 +483,93 @@ class Game:
         self.coming_from_teleport = True
         self.load_map('assets/maps/map_glace.tmx')
 
+    def load_game(self, slot):
+        self.current_save_slot = slot
+        filename = f"save_{slot}.json"
+        if os.path.exists(filename):
+            try:
+                with open(filename, 'r') as f:
+                    data = json.load(f)
+                
+                # Restore game state
+                self.score = data.get('score', 0)
+                self.kill_count = data.get('kill_count', 0)
+                self.boss_glace_dead = data.get('boss_glace_dead', False)
+                
+                # Killed mobs - convert back to set of tuples
+                killed = data.get('killed_mobs', [])
+                self.killed_mobs = set()
+                for item in killed:
+                    self.killed_mobs.add((item[0], tuple(item[1])))
+                
+                # Restore map
+                map_name = data.get('current_map_name', 'assets/maps/map_glace.tmx')
+                # Set current_map_name before load_map to prevent killed_mobs from being cleared
+                self.current_map_name = map_name
+                self.load_map(map_name)
+                
+                # Restore player state
+                player_pos = data.get('player_pos', [200, 200])
+                self.player.set_position(tuple(player_pos))
+                self.respawn_point = tuple(player_pos)
+                self.player.hp_current = data.get('player_hp', 100)
+                
+                print(f"Partie chargee depuis {filename}")
+            except Exception as e:
+                print(f"Erreur lors du chargement : {e}")
+                self.load_map('assets/maps/map_glace.tmx')
+        else:
+            print(f"Aucune sauvegarde trouvee pour le slot {slot}, nouvelle partie.")
+            # Start fresh
+            self.score = 0
+            self.kill_count = 0
+            self.boss_glace_dead = False
+            self.killed_mobs.clear()
+            self.load_map('assets/maps/map_glace.tmx')
+            self.player.hp_current = 100
+            
+        self.last_save_time = pygame.time.get_ticks()
+        self.game_started = True
+        self.is_paused = False
+
+    def save_game(self):
+        if not self.current_save_slot:
+            return
+            
+        filename = f"save_{self.current_save_slot}.json"
+        
+        # Serialize killed_mobs
+        killed_list = [[m[0], list(m[1])] for m in self.killed_mobs]
+        
+        data = {
+            'current_map_name': self.current_map_name,
+            'player_pos': list(self.player.rect.topleft),
+            'player_hp': self.player.hp_current,
+            'score': self.score,
+            'kill_count': self.kill_count,
+            'boss_glace_dead': self.boss_glace_dead,
+            'killed_mobs': killed_list
+        }
+        
+        try:
+            with open(filename, 'w') as f:
+                json.dump(data, f, indent=4)
+            print(f"Partie sauvegardee dans {filename}")
+            self.save_indicator_timer = 180  # 3 seconds at 60 FPS
+        except Exception as e:
+            print(f"Erreur lors de la sauvegarde : {e}")
+
+    def delete_save(self, slot):
+        filename = f"save_{slot}.json"
+        if os.path.exists(filename):
+            try:
+                os.remove(filename)
+                print(f"Sauvegarde {slot} supprimee.")
+            except Exception as e:
+                print(f"Erreur lors de la suppression : {e}")
+        self.menu.refresh_saves()
+        self.menu.state = "save_selection"
+
     def fade_in(self, duration_ms=600):
         """Fondu depuis le noir vers le contenu actuel."""
         fade = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
@@ -635,7 +730,16 @@ class Game:
     def update(self, dt):
         if self.menu_input_blocked > 0:
             self.menu_input_blocked -= 1
+
+        if self.save_indicator_timer > 0:
+            self.save_indicator_timer -= 1
+
         if not self.is_paused:
+            if self.game_started and self.current_save_slot:
+                if pygame.time.get_ticks() - self.last_save_time >= 120000:
+                    self.save_game()
+                    self.last_save_time = pygame.time.get_ticks()
+
             if self.is_multi and self.network:
                 # Initialise le timer de message si pas encore fait
                 if getattr(self, 'last_msg_time', 0) == 0:
@@ -921,6 +1025,19 @@ class Game:
                     btn_surf_m.blit(lbl_m, lbl_m.get_rect(center=btn_surf_m.get_rect().center))
                     self.screen.blit(btn_surf_m, self.btn_gameover_menu.topleft)
 
+            if self.save_indicator_timer > 0:
+                text = self.save_font.render("Sauvegarde automatique...", True, WHITE)
+                self.screen.blit(text, (SCREEN_WIDTH - text.get_width() - 50, 20))
+                
+                t = pygame.time.get_ticks() / 200.0
+                cx_wheel = SCREEN_WIDTH - 25
+                cy_wheel = 30
+                radius = 10
+                rect = pygame.Rect(cx_wheel - radius, cy_wheel - radius, radius * 2, radius * 2)
+                start_angle = t
+                end_angle = t + math.pi
+                pygame.draw.arc(self.screen, WHITE, rect, start_angle, end_angle, 3)
+
         if flip:
             pygame.display.flip()
 
@@ -984,10 +1101,20 @@ class Game:
                         else:
                             self.menu.state = "mode_selection"
 
-                    elif action == "play_story":
-                        print("Mode Histoire lancé !")
-                        self.game_started = True
-                        self.is_paused    = False
+                    elif isinstance(action, tuple) and action[0] == "play_story":
+                        slot = action[1]
+                        print(f"Mode Histoire lancé (Slot {slot}) !")
+                        self.load_game(slot)
+                        
+                    elif isinstance(action, tuple) and action[0] == "new_game":
+                        slot = action[1]
+                        print(f"Nouvelle partie lancée (Slot {slot}) !")
+                        self.load_game(slot)
+                        self.save_game()
+                        
+                    elif isinstance(action, tuple) and action[0] == "delete_save":
+                        slot = action[1]
+                        self.delete_save(slot)
 
                     # ── HOST crée une session ───────────────────────
                     elif action == "multi_create_session":

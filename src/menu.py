@@ -3,6 +3,7 @@ import cv2
 import sys
 import os
 import math
+import glob
 from config import ROOT_DIR
 
 # --- CONFIGURATION ---
@@ -70,11 +71,16 @@ class Menu:
         self.btn_mode_multi = self._btn(center_x, SCREEN_HEIGHT // 2 + 60,  450, 80)
         self.btn_back       = self._btn(center_x, SCREEN_HEIGHT // 2 + 250, 250, 60)
 
-        # ── Boutons sauvegardes ─────────────────────────────────────
-        self.btn_save_1     = self._btn(center_x, SCREEN_HEIGHT // 2 - 100, 400, 80)
-        self.btn_save_2     = self._btn(center_x, SCREEN_HEIGHT // 2 + 0,   400, 80)
-        self.btn_save_3     = self._btn(center_x, SCREEN_HEIGHT // 2 + 100, 400, 80)
-        self.btn_back_save  = self._btn(center_x, SCREEN_HEIGHT // 2 + 250, 250, 60)
+        # ── Boutons sauvegardes (dynamique) ─────────────────────────
+        self.saves = []
+        self.btn_back_save  = self._btn(center_x, SCREEN_HEIGHT // 2 + 350, 250, 60)
+        self.btn_new_game   = self._btn(SCREEN_WIDTH - 250, SCREEN_HEIGHT // 2, 350, 80)
+
+        
+        # Confirmation suppression
+        self.btn_confirm_del_yes = self._btn(center_x - 170, SCREEN_HEIGHT // 2 + 50, 320, 60)
+        self.btn_confirm_del_no  = self._btn(center_x + 170, SCREEN_HEIGHT // 2 + 50, 320, 60)
+        self.save_to_delete = None
 
         # ── Boutons lobby multi ─────────────────────────────────────
         self.btn_host       = self._btn(center_x, SCREEN_HEIGHT // 2 - 50,  400, 80)
@@ -144,6 +150,31 @@ class Menu:
         r = pygame.Rect(0, 0, w, h)
         r.center = (cx, cy)
         return r
+
+    def refresh_saves(self):
+        self.saves = []
+        center_x = SCREEN_WIDTH // 2
+        save_files = glob.glob("save_*.json")
+        slots = []
+        for f in save_files:
+            try:
+                slots.append(int(f.split('_')[1].split('.')[0]))
+            except:
+                pass
+        slots.sort()
+        
+        y_offset = SCREEN_HEIGHT // 2 - max(0, len(slots)-1) * 50
+        
+        for i, slot in enumerate(slots):
+            y = y_offset + i * 100
+            btn = self._btn(center_x, y, 400, 80)
+            del_btn = self._btn(center_x + 240, y, 40, 40)
+            self.saves.append({
+                'slot': slot,
+                'btn': btn,
+                'del': del_btn,
+                'label': f"SAUVEGARDE {slot}"
+            })
 
     def update_video(self):
         if self.video_loaded:
@@ -239,11 +270,23 @@ class Menu:
 
         # ── Sélection de sauvegarde ─────────────────────────────────
         elif self.state == "save_selection":
-            self.draw_text("CHOISIR UNE SAUVEGARDE", self.titre_font, WHITE, cx, 250)
-            self.draw_button(self.btn_save_1, "SAUVEGARDE 1", BLUE_MENU, BLUE_HOVER, mouse_pos)
-            self.draw_button(self.btn_save_2, "SAUVEGARDE 2", BLUE_MENU, BLUE_HOVER, mouse_pos)
-            self.draw_button(self.btn_save_3, "SAUVEGARDE 3", BLUE_MENU, BLUE_HOVER, mouse_pos)
+            self.draw_text("CHOISIR UNE SAUVEGARDE", self.titre_font, WHITE, cx, 150)
+            
+            if not self.saves:
+                self.draw_text("aucune sauvegarde", self.button_font, GREY, cx, SCREEN_HEIGHT // 2)
+            else:
+                for s in self.saves:
+                    self.draw_button(s['btn'], s['label'], BLUE_MENU, BLUE_HOVER, mouse_pos)
+                    self.draw_button(s['del'], "X", (200, 0, 0), (255, 50, 50), mouse_pos)
+            
+            self.draw_button(self.btn_new_game, "NOUVELLE PARTIE", GREEN, (50, 255, 50), mouse_pos)
             self.draw_button(self.btn_back_save, "RETOUR", GREY, WHITE, mouse_pos)
+
+        # ── Confirmation de suppression ─────────────────────────────
+        elif self.state == "delete_save_confirm":
+            self.draw_text("voulez vous supprimer la sauvegarde?", self.button_font, WHITE, cx, 300)
+            self.draw_button(self.btn_confirm_del_yes, "oui, malheureusement", (200, 0, 0), (255, 50, 50), mouse_pos)
+            self.draw_button(self.btn_confirm_del_no, "non, je la garde!", GREEN, (50, 255, 50), mouse_pos)
 
         # ── Paramètres ──────────────────────────────────────────────
         elif self.state == "settings":
@@ -439,16 +482,40 @@ class Menu:
 
             # ── mode_selection ──────────────────────────────────────
             elif self.state == "mode_selection":
-                if self.btn_mode_story.collidepoint(event.pos): self.state = "save_selection"
+                if self.btn_mode_story.collidepoint(event.pos):
+                    self.refresh_saves()
+                    self.state = "save_selection"
                 if self.btn_mode_multi.collidepoint(event.pos): self.state = "multi_lobby"
                 if self.btn_back.collidepoint(event.pos):       self.state = "main"
 
             # ── save_selection ──────────────────────────────────────
             elif self.state == "save_selection":
-                if self.btn_save_1.collidepoint(event.pos): return "play_story"
-                if self.btn_save_2.collidepoint(event.pos): return "play_story"
-                if self.btn_save_3.collidepoint(event.pos): return "play_story"
+                if self.btn_new_game.collidepoint(event.pos):
+                    next_slot = 1
+                    if self.saves:
+                        next_slot = max(s['slot'] for s in self.saves) + 1
+                    return ("new_game", next_slot)
+                
+                for s in self.saves:
+                    if s['btn'].collidepoint(event.pos):
+                        return ("play_story", s['slot'])
+                    if s['del'].collidepoint(event.pos):
+                        self.save_to_delete = s['slot']
+                        self.state = "delete_save_confirm"
+                        return None
+
                 if self.btn_back_save.collidepoint(event.pos): self.state = "mode_selection"
+
+            # ── delete_save_confirm ─────────────────────────────────
+            elif self.state == "delete_save_confirm":
+                if self.btn_confirm_del_yes.collidepoint(event.pos):
+                    action = ("delete_save", self.save_to_delete)
+                    self.save_to_delete = None
+                    return action
+                if self.btn_confirm_del_no.collidepoint(event.pos):
+                    self.save_to_delete = None
+                    self.refresh_saves()
+                    self.state = "save_selection"
 
             # ── settings ────────────────────────────────────────────
             elif self.state == "settings":
