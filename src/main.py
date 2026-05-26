@@ -744,7 +744,8 @@ class Game:
                 boss_shockwaves = []
                 boss_hazards = []
                 for m in self.monster_sprites:
-                    mobs_state.append({"id": getattr(m, 'id', -1), "x": m.rect.x, "y": m.rect.y, "hp": m.hp_current})
+                    hp_val = getattr(m, 'hp_current', getattr(m, 'hp', 0))
+                    mobs_state.append({"id": getattr(m, 'id', -1), "x": m.rect.x, "y": m.rect.y, "hp": hp_val})
                     if hasattr(m, 'attack_state'):
                         for p in getattr(m, 'projectiles', []):
                             boss_projs.append({"x": p.rect.x, "y": p.rect.y})
@@ -823,11 +824,18 @@ class Game:
                         if mob:
                             mob.rect.x = m_state["x"]
                             mob.rect.y = m_state["y"]
-                            mob.hp_current = m_state["hp"]
+                            if hasattr(mob, 'hp_current'):
+                                mob.hp_current = m_state["hp"]
+                            elif hasattr(mob, 'hp'):
+                                mob.hp = m_state["hp"]
                     for m in list(self.monster_sprites):
                         if getattr(m, 'id', None) not in received_ids:
-                            m.dead = True
-                            m.hp_current = 0
+                            if hasattr(m, 'hp_current'):
+                                m.hp_current = 0
+                            elif hasattr(m, 'hp'):
+                                m.hp = 0
+                            if hasattr(m, 'dead'): m.dead = True
+                            if hasattr(m, 'alive'): m.alive = False
                 elif msg.get("action") == "respawn_team":
                     self._respawn()
 
