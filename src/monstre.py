@@ -150,10 +150,10 @@ class BaseEnemy(pygame.sprite.Sprite):
 
 class ChienEnrage(BaseEnemy):
 
-    PATROL_SPEED  = 2
+    PATROL_SPEED  = 3
     PATROL_RADIUS = 120
-    CHASE_SPEED   = 3
-    SLIDE_SPEED   = 7
+    CHASE_SPEED   = 4.5
+    SLIDE_SPEED   = 9
     SLIDE_DECAY   = 0.15
     TURN_DELAY    = 45
     DETECT_RANGE  = 500
@@ -441,8 +441,16 @@ class GoblinMelee(BaseEnemy):
         super().__init__(pos, hp=40, groups=groups, capacite_absorbable="slash")
         self.CONTACT_COOLDOWN = 70
 
-        w, h = 28, 40
-        self.image = self._build_img(w, h)
+        # Chargement et préparation des animations
+        self.animations = self._load_animations()
+        self.animator = Animator(self.animations, fps=8)
+
+        if "idle" in self.animations and self.animations["idle"]:
+            self.image = self.animations["idle"][0]
+        else:
+            self.image = pygame.Surface((160, 160))
+            self.image.fill((0, 200, 0))
+
         self.rect  = self.image.get_rect(topleft=pos)
 
         self.state        = self.ST_WANDER
@@ -451,19 +459,79 @@ class GoblinMelee(BaseEnemy):
         self.stun_timer   = 0
         self.vy           = 0
 
-    @staticmethod
-    def _build_img(w, h):
-        s = pygame.Surface((w, h), pygame.SRCALPHA)
-        s.fill((0, 0, 0, 0))
-        pygame.draw.rect(s, GREEN_DARK,  (4, 16, 20, 24))
-        pygame.draw.ellipse(s, GREEN_LIGHT, (4, 0, 20, 20))
-        pygame.draw.circle(s, YELLOW, (9,  7), 3)
-        pygame.draw.circle(s, YELLOW, (19, 7), 3)
-        pygame.draw.circle(s, BLACK,  (10, 7), 1)
-        pygame.draw.circle(s, BLACK,  (20, 7), 1)
-        pygame.draw.rect(s, ORANGE, (22, 8, 6, 14))
-        pygame.draw.polygon(s, (200, 100, 0), [(22, 8), (28, 4), (28, 14)])
-        return s
+    def _load_animations(self):
+        animations = {}
+        TARGET_SIZE = (160, 160)
+
+        path_option1 = os.path.join(CURRENT_DIR, "assets", "images", "monstre", "goblin_melee")
+        path_option2 = os.path.join(os.path.dirname(CURRENT_DIR), "assets", "images", "monstre", "goblin_melee")
+        sheet_dir = path_option1 if os.path.isdir(path_option1) else path_option2
+
+        file_mapping = {
+            "idle":   "Idle.png",
+            "wander": "Walk.png",
+            "return": "Walk.png",
+            "chase":  "Run.png",
+            "attack": "Attack_1.png",
+            "hurt":   "Hurt.png",
+            "dead":   "Dead.png"
+        }
+
+        for state, fname in file_mapping.items():
+            path = os.path.join(sheet_dir, fname)
+            frames = []
+            if os.path.isfile(path):
+                try:
+                    img = pygame.image.load(path).convert_alpha()
+                    w, h = img.get_size()
+                    
+                    if w > h:
+                        frame_size = h
+                        num_frames = w // frame_size
+                        for i in range(num_frames):
+                            rect = pygame.Rect(i * frame_size, 0, frame_size, frame_size)
+                            frame = img.subsurface(rect).copy()
+                            frame = pygame.transform.scale(frame, TARGET_SIZE)
+                            frames.append(frame)
+                    else:
+                        frame = pygame.transform.scale(img, TARGET_SIZE)
+                        frames.append(frame)
+                except pygame.error as e:
+                    print(f"⚠️ Erreur de chargement pour {fname} : {e}")
+            
+            if frames:
+                animations[state] = frames
+
+        # Sécurité : Fallbacks
+        if "idle" not in animations:
+            if "wander" in animations:
+                animations["idle"] = animations["wander"]
+            else:
+                s = pygame.Surface(TARGET_SIZE, pygame.SRCALPHA)
+                pygame.draw.ellipse(s, GREEN_DARK, (16, 16, 32, 48))
+                animations["idle"] = [s]
+
+        return animations
+
+    def _get_anim_frame(self, anim_state, loop=True):
+        dt = 1.0 / 60.0  
+        
+        if anim_state == "chase":
+            self.animator.animation_speed = 1.0 / 12
+        elif anim_state == "attack":
+            self.animator.animation_speed = 1.0 / 10
+        else:
+            self.animator.animation_speed = 1.0 / 8
+
+        surf = self.animator.get_current_frame(dt, anim_state, loop=loop)
+        
+        if not self.facing_right:
+            surf = pygame.transform.flip(surf, True, False)
+            
+        frames = self.animator.animations.get(anim_state, [])
+        done = (not loop) and len(frames) > 0 and self.animator.frame_index >= len(frames) - 1
+        
+        return surf, done
 
     def update(self, player, obstacles):
         if self.dead: return
@@ -485,23 +553,61 @@ class GoblinMelee(BaseEnemy):
             if dist <= self.ATTACK_RANGE: self.state = self.ST_ATTACK
             elif dist > self.LOSE_RANGE:  self.state = self.ST_RETURN
         elif self.state == self.ST_ATTACK:
-            if dist > self.ATTACK_RANGE + 20: self.state = self.ST_CHASE
+            if dist > self.LOSE_RANGE:
+                self.state = self.ST_RETURN
+            elif self.attack_timer == 0 and dist > self.ATTACK_RANGE:
+                self.state = self.ST_CHASE
 
         if self.state == self.ST_WANDER:
+            tx = self._patrol_targets[self._patrol_idx]
+            d = 1 if tx > self.rect.centerx else -1
+            self.facing_right = (d == 1)
             self._do_wander(obstacles)
         elif self.state == self.ST_RETURN:
+            tx = self.spawn_pos[0]
+            d = 1 if tx > self.rect.centerx else -1
+            self.facing_right = (d == 1)
             if self._do_return_to_spawn(obstacles): self.state = self.ST_WANDER
         elif self.state == self.ST_CHASE:
             d = 1 if player.rect.centerx > self.rect.centerx else -1
             self.facing_right = (d == 1)
             self._try_move(d * self.SPEED, obstacles)
         elif self.state == self.ST_ATTACK:
-            if self.attack_timer == 0 and self.contact_timer == 0:
-                player.take_damage(self.ATTACK_DAMAGE)
-                self.attack_timer  = self.ATTACK_CD
-                self.contact_timer = self.CONTACT_COOLDOWN
-                if getattr(self, 'sound_manager', None):
-                    self.sound_manager.play("gobelin_attack")
+            d = 1 if player.rect.centerx > self.rect.centerx else -1
+            self.facing_right = (d == 1)
+            if self.attack_timer > 0:
+                # Reculer par rapport au joueur pendant le cooldown
+                self._try_move(-d * self.SPEED * 1.2, obstacles)
+            else:
+                if self.attack_timer == 0 and self.contact_timer == 0:
+                    player.take_damage(self.ATTACK_DAMAGE)
+                    self.attack_timer  = self.ATTACK_CD
+                    self.contact_timer = self.CONTACT_COOLDOWN
+                    if getattr(self, 'sound_manager', None):
+                        self.sound_manager.play("gobelin_attack")
+
+        # Mise à jour de l'image animée
+        anim_state = "idle"
+        loop = True
+        
+        if self.dead:
+            anim_state = "dead"
+            loop = False
+        elif self.stun_timer > 0:
+            anim_state = "hurt"
+            loop = False
+        elif self.state == self.ST_ATTACK:
+            if self.attack_timer > 0:
+                anim_state = "wander"  # Utilise la marche arrière
+            else:
+                anim_state = "attack"
+                loop = False
+        elif self.state == self.ST_CHASE:
+            anim_state = "chase"
+        elif self.state in (self.ST_WANDER, self.ST_RETURN):
+            anim_state = "wander"
+
+        self.image, _ = self._get_anim_frame(anim_state, loop=loop)
 
     def take_damage(self, amount):
         super().take_damage(amount)
@@ -522,21 +628,43 @@ class Arrow(pygame.sprite.Sprite):
 
     def __init__(self, pos, direction, groups):
         super().__init__(groups)
+        
+        path_option1 = os.path.join(CURRENT_DIR, "assets", "images", "monstre", "goblin_archer", "Arrow.png")
+        path_option2 = os.path.join(os.path.dirname(CURRENT_DIR), "assets", "images", "monstre", "goblin_archer", "Arrow.png")
+        path = path_option1 if os.path.isfile(path_option1) else path_option2
+        
+        if os.path.isfile(path):
+            try:
+                img = pygame.image.load(path).convert_alpha()
+                img = pygame.transform.scale(img, (32, 32))
+                if direction == -1:
+                    img = pygame.transform.flip(img, True, False)
+                self.image = img
+            except Exception:
+                self.image = self._create_placeholder(direction)
+        else:
+            self.image = self._create_placeholder(direction)
+            
+        self.rect      = self.image.get_rect(center=pos)
+        self.direction = direction
+        self.damage    = 10
+        self.lifetime  = 180
+
+    def _create_placeholder(self, direction):
         s = pygame.Surface((18, 6), pygame.SRCALPHA)
         pygame.draw.rect(s, BROWN, (0, 2, 14, 2))
         pygame.draw.polygon(s, (200, 200, 220), [(14, 0), (18, 3), (14, 6)])
         pygame.draw.polygon(s, WHITE,           [(0, 0), (4, 3), (0, 6)])
         if direction == -1:
             s = pygame.transform.flip(s, True, False)
-        self.image     = s
-        self.rect      = self.image.get_rect(center=pos)
-        self.direction = direction
-        self.damage    = 10
+        return s
 
     def update(self, obstacles):
         self.rect.x += self.SPEED * self.direction
         if pygame.sprite.spritecollide(self, obstacles, False): self.kill()
-        if self.rect.right < 0 or self.rect.left > SCREEN_WIDTH: self.kill()
+        self.lifetime -= 1
+        if self.lifetime <= 0:
+            self.kill()
 
 class GoblinArcher(BaseEnemy):
 
@@ -559,8 +687,16 @@ class GoblinArcher(BaseEnemy):
         super().__init__(pos, hp=30, groups=groups, capacite_absorbable="arrow")
         self.CONTACT_COOLDOWN = 100
 
-        w, h = 28, 40
-        self.image = self._build_img(w, h)
+        # Chargement et préparation des animations
+        self.animations = self._load_animations()
+        self.animator = Animator(self.animations, fps=8)
+
+        if "idle" in self.animations and self.animations["idle"]:
+            self.image = self.animations["idle"][0]
+        else:
+            self.image = pygame.Surface((160, 160))
+            self.image.fill((0, 255, 0))
+
         self.rect  = self.image.get_rect(topleft=pos)
 
         self.state        = self.ST_WANDER
@@ -570,20 +706,79 @@ class GoblinArcher(BaseEnemy):
         self.arrow_groups = arrow_groups
         self.arrows       = pygame.sprite.Group()
 
-    @staticmethod
-    def _build_img(w, h):
-        s = pygame.Surface((w, h), pygame.SRCALPHA)
-        s.fill((0, 0, 0, 0))
-        pygame.draw.rect(s, GREEN_DARK,    (4, 16, 20, 24))
-        pygame.draw.ellipse(s, GREEN_LIGHT, (4, 0, 20, 20))
-        pygame.draw.circle(s, YELLOW, (9,  7), 3)
-        pygame.draw.circle(s, YELLOW, (19, 7), 3)
-        pygame.draw.circle(s, BLACK,  (10, 7), 1)
-        pygame.draw.circle(s, BLACK,  (20, 7), 1)
-        pygame.draw.arc(s, BROWN, pygame.Rect(20, 6, 10, 22),
-                        math.radians(60), math.radians(300), 2)
-        pygame.draw.line(s, WHITE, (25, 8), (25, 26), 1)
-        return s
+    def _load_animations(self):
+        animations = {}
+        TARGET_SIZE = (160, 160)
+
+        path_option1 = os.path.join(CURRENT_DIR, "assets", "images", "monstre", "goblin_archer")
+        path_option2 = os.path.join(os.path.dirname(CURRENT_DIR), "assets", "images", "monstre", "goblin_archer")
+        sheet_dir = path_option1 if os.path.isdir(path_option1) else path_option2
+
+        file_mapping = {
+            "idle":     "Idle.png",
+            "wander":   "Walk.png",
+            "return":   "Walk.png",
+            "position": "Walk.png",
+            "retreat":  "Walk.png",
+            "shoot":    "Shot_1.png",
+            "dead":     "Dead.png"
+        }
+
+        for state, fname in file_mapping.items():
+            path = os.path.join(sheet_dir, fname)
+            frames = []
+            if os.path.isfile(path):
+                try:
+                    img = pygame.image.load(path).convert_alpha()
+                    w, h = img.get_size()
+                    
+                    if w > h:
+                        frame_size = h
+                        num_frames = w // frame_size
+                        for i in range(num_frames):
+                            rect = pygame.Rect(i * frame_size, 0, frame_size, frame_size)
+                            frame = img.subsurface(rect).copy()
+                            frame = pygame.transform.scale(frame, TARGET_SIZE)
+                            frames.append(frame)
+                    else:
+                        frame = pygame.transform.scale(img, TARGET_SIZE)
+                        frames.append(frame)
+                except pygame.error as e:
+                    print(f"⚠️ Erreur de chargement pour {fname} : {e}")
+            
+            if frames:
+                animations[state] = frames
+
+        # Sécurité : Fallbacks
+        if "idle" not in animations:
+            if "wander" in animations:
+                animations["idle"] = animations["wander"]
+            else:
+                s = pygame.Surface(TARGET_SIZE, pygame.SRCALPHA)
+                pygame.draw.ellipse(s, GREEN_DARK, (16, 16, 32, 48))
+                animations["idle"] = [s]
+
+        return animations
+
+    def _get_anim_frame(self, anim_state, loop=True):
+        dt = 1.0 / 60.0  
+        
+        if anim_state == "shoot":
+            self.animator.animation_speed = 1.0 / 15
+        elif anim_state in ("wander", "position", "retreat"):
+            self.animator.animation_speed = 1.0 / 12
+        else:
+            self.animator.animation_speed = 1.0 / 8
+
+        surf = self.animator.get_current_frame(dt, anim_state, loop=loop)
+        
+        if not self.facing_right:
+            surf = pygame.transform.flip(surf, True, False)
+            
+        frames = self.animator.animations.get(anim_state, [])
+        done = (not loop) and len(frames) > 0 and self.animator.frame_index >= len(frames) - 1
+        
+        return surf, done
 
     def update(self, player, obstacles):
         if self.dead: return
@@ -599,17 +794,13 @@ class GoblinArcher(BaseEnemy):
                 self.state = self.ST_POSITION
                 if getattr(self, 'sound_manager', None):
                     self.sound_manager.play("gobelin_detect")
-        elif self.state == self.ST_POSITION:
-            if dist > self.LOSE_RANGE: self.state = self.ST_RETURN
-            elif dist < self.RETREAT_DIST: self.state = self.ST_RETREAT
-            elif abs(dist - self.PREFERRED_DIST) < 40: self.state = self.ST_SHOOT
-        elif self.state == self.ST_SHOOT:
-            if dist > self.LOSE_RANGE: self.state = self.ST_RETURN
-            elif dist < self.RETREAT_DIST: self.state = self.ST_RETREAT
-            elif abs(dist - self.PREFERRED_DIST) > 60: self.state = self.ST_POSITION
-        elif self.state == self.ST_RETREAT:
-            if dist > self.LOSE_RANGE: self.state = self.ST_RETURN
-            elif dist > self.PREFERRED_DIST: self.state = self.ST_POSITION
+        elif self.state in (self.ST_POSITION, self.ST_SHOOT, self.ST_RETREAT):
+            if dist > self.LOSE_RANGE:
+                self.state = self.ST_RETURN
+            elif dist < self.RETREAT_DIST:
+                self.state = self.ST_RETREAT
+            else:
+                self.state = self.ST_SHOOT
 
         d = 1 if player.rect.centerx > self.rect.centerx else -1
         self.facing_right = (d == 1)
@@ -618,23 +809,58 @@ class GoblinArcher(BaseEnemy):
             self._do_wander(obstacles)
         elif self.state == self.ST_RETURN:
             if self._do_return_to_spawn(obstacles): self.state = self.ST_WANDER
-        elif self.state == self.ST_POSITION:
-            if dist > self.PREFERRED_DIST + 40: self._try_move(d * self.SPEED, obstacles)
-            elif dist < self.PREFERRED_DIST - 40: self._try_move(-d * self.SPEED, obstacles)
-        elif self.state == self.ST_RETREAT:
-            self._try_move(-d * self.SPEED * 2, obstacles)
-        elif self.state == self.ST_SHOOT:
+        elif self.state in (self.ST_POSITION, self.ST_SHOOT):
+            # Essayer de maintenir la distance préférée
+            if dist > self.PREFERRED_DIST + 40:
+                self._try_move(d * self.SPEED, obstacles)
+            elif dist < self.PREFERRED_DIST - 40:
+                self._try_move(-d * self.SPEED, obstacles)
+            
+            # Tirer une flèche dès que possible
             if self.shoot_timer == 0:
                 Arrow(self.rect.center, d, [self.arrows] + list(self.arrow_groups))
                 self.shoot_timer = self.SHOOT_CD
                 if getattr(self, 'sound_manager', None):
                     self.sound_manager.play("gobelin_archer_attack")
+                # Déclencher l'état de tir
+                self.animator.current_state = "shoot"
+                self.animator.frame_index = 0
+        elif self.state == self.ST_RETREAT:
+            self._try_move(-d * self.SPEED * 2, obstacles)
+            
+            # Tirer aussi en reculant si le tir est prêt
+            if self.shoot_timer == 0:
+                Arrow(self.rect.center, d, [self.arrows] + list(self.arrow_groups))
+                self.shoot_timer = self.SHOOT_CD
+                if getattr(self, 'sound_manager', None):
+                    self.sound_manager.play("gobelin_archer_attack")
+                # Déclencher l'état de tir
+                self.animator.current_state = "shoot"
+                self.animator.frame_index = 0
 
         if dist < 40 and self.contact_timer == 0:
             player.take_damage(8)
             self.contact_timer = self.CONTACT_COOLDOWN
 
-        self.arrows.update(obstacles)
+        pass
+
+        # Mise à jour de l'image animée
+        anim_state = "idle"
+        loop = True
+        
+        # Jouer l'animation de tir en entier (sans loop) si elle a commencé
+        if self.dead:
+            anim_state = "dead"
+            loop = False
+        elif self.animator.current_state == "shoot" and self.animator.frame_index < len(self.animator.animations.get("shoot", [])) - 1:
+            anim_state = "shoot"
+            loop = False
+        elif self.state == self.ST_SHOOT:
+            anim_state = "idle"
+        elif self.state in (self.ST_POSITION, self.ST_RETREAT, self.ST_WANDER, self.ST_RETURN):
+            anim_state = "wander"
+
+        self.image, _ = self._get_anim_frame(anim_state, loop=loop)
 
     def on_death(self):
         if getattr(self, 'sound_manager', None):
@@ -667,9 +893,9 @@ class EspritBase(BaseEnemy):
     PATROL_RADIUS    = 0
     SPEED            = 3
     JUMP_FORCE       = -11
-    DETECT_RANGE     = 380
-    LOSE_RANGE       = 560
-    EXPLOSION_RADIUS = 50
+    DETECT_RANGE     = 550
+    LOSE_RANGE       = 750
+    EXPLOSION_RADIUS = 20
 
     COULEUR_CORPS = PURPLE
     COULEUR_AURA  = (180, 0, 255)
@@ -784,9 +1010,9 @@ class EspritBase(BaseEnemy):
 class EspritFeu(EspritBase):
     SPEED            = 4
     JUMP_FORCE       = -12
-    DETECT_RANGE     = 450
-    LOSE_RANGE       = 650
-    EXPLOSION_RADIUS = 60
+    DETECT_RANGE     = 600
+    LOSE_RANGE       = 800
+    EXPLOSION_RADIUS = 25
     COULEUR_CORPS    = (220, 60,  0)
     COULEUR_AURA     = (255, 200, 0)
     BURN_DPS         = 5
@@ -808,9 +1034,9 @@ class EspritFeu(EspritBase):
 class EspritGlace(EspritBase):
     SPEED            = 1
     JUMP_FORCE       = -8
-    DETECT_RANGE     = 350
-    LOSE_RANGE       = 500
-    EXPLOSION_RADIUS = 70
+    DETECT_RANGE     = 550
+    LOSE_RANGE       = 750
+    EXPLOSION_RADIUS = 30
     COULEUR_CORPS    = BLUE_ICE
     COULEUR_AURA     = CYAN
     SLOW_DUR         = 180
@@ -845,9 +1071,9 @@ class EspritGlace(EspritBase):
 class EspritFoudre(EspritBase):
     SPEED            = 5
     JUMP_FORCE       = -14
-    DETECT_RANGE     = 500
-    LOSE_RANGE       = 700
-    EXPLOSION_RADIUS = 55
+    DETECT_RANGE     = 650
+    LOSE_RANGE       = 850
+    EXPLOSION_RADIUS = 22
     COULEUR_CORPS    = (180, 180, 0)
     COULEUR_AURA     = ELECTRIC
     SHOCK_DAMAGE     = 18
@@ -898,9 +1124,9 @@ class EspritFoudre(EspritBase):
 class EspritNature(EspritBase):
     SPEED            = 2
     JUMP_FORCE       = -10
-    DETECT_RANGE     = 350
-    LOSE_RANGE       = 500
-    EXPLOSION_RADIUS = 65
+    DETECT_RANGE     = 550
+    LOSE_RANGE       = 750
+    EXPLOSION_RADIUS = 25
     COULEUR_CORPS    = NATURE_GREEN
     COULEUR_AURA     = GREEN_LIGHT
     POISON_DPS       = 3
@@ -1092,3 +1318,1102 @@ class GolemPierre(BaseEnemy):
             player.slow_factor = self.QUAKE_SLOW_FAC
         if self.screen_shake_ref is not None:
             self.screen_shake_ref[0] = 20
+
+
+# ================================================================
+#  3. CERF PASSIF (Deer)
+# ================================================================
+
+class Deer(BaseEnemy):
+
+    PATROL_SPEED  = 1.5
+    PATROL_RADIUS = 100
+    FLEE_SPEED    = 4.0
+    DETECT_RANGE  = 250
+    LOSE_RANGE    = 450
+    ATTACK_DAMAGE = 0
+
+    ST_WANDER = "wander"
+    ST_RETURN = "return"
+    ST_FLEE   = "flee"
+
+    def __init__(self, pos, groups):
+        super().__init__(pos, hp=20, groups=groups, capacite_absorbable=None)
+        self.CONTACT_COOLDOWN = 60
+
+        # Chargement et préparation des animations
+        self.animations = self._load_animations()
+        self.animator = Animator(self.animations, fps=8)
+
+        if "idle" in self.animations and self.animations["idle"]:
+            self.image = self.animations["idle"][0]
+        else:
+            self.image = pygame.Surface((64, 64))
+            self.image.fill((150, 110, 80))
+
+        self.rect  = self.image.get_rect(topleft=pos)
+
+        self.state        = self.ST_WANDER
+        self.facing_right = True
+        self.vy           = 0
+
+    def _load_animations(self):
+        animations = {}
+        TARGET_SIZE = (64, 64)
+
+        path_option1 = os.path.join(CURRENT_DIR, "assets", "images", "monstre", "Deer", "Deer")
+        path_option2 = os.path.join(os.path.dirname(CURRENT_DIR), "assets", "images", "monstre", "Deer", "Deer")
+        sheet_dir = path_option1 if os.path.isdir(path_option1) else path_option2
+
+        file_mapping = {
+            "idle":   "Deer_Idle.png",
+            "wander": "Deer_Walk.png",
+            "flee":   "Deer_Run.png",
+            "hurt":   "Deer_Hurt.png",
+            "dead":   "Deer_Death.png"
+        }
+
+        for state, fname in file_mapping.items():
+            path = os.path.join(sheet_dir, fname)
+            frames = []
+            if os.path.isfile(path):
+                try:
+                    img = pygame.image.load(path).convert_alpha()
+                    w, h = img.get_size()
+                    
+                    # On charge la ligne 3 (orientation droite, index 3 de la grille 32x32)
+                    row_index = 3
+                    row_y = row_index * 32
+                    
+                    num_frames = w // 32
+                    for i in range(num_frames):
+                        rect = pygame.Rect(i * 32, row_y, 32, 32)
+                        frame = img.subsurface(rect).copy()
+                        frame = pygame.transform.scale(frame, TARGET_SIZE)
+                        frames.append(frame)
+                except pygame.error as e:
+                    print(f"⚠️ Erreur de chargement pour {fname} : {e}")
+            
+            if frames:
+                animations[state] = frames
+
+        # Sécurité : Fallbacks
+        if "idle" not in animations:
+            if "wander" in animations:
+                animations["idle"] = animations["wander"]
+            else:
+                s = pygame.Surface(TARGET_SIZE, pygame.SRCALPHA)
+                pygame.draw.ellipse(s, (150, 110, 80), (16, 16, 32, 32))
+                animations["idle"] = [s]
+
+        return animations
+
+    def _get_anim_frame(self, anim_state, loop=True):
+        dt = 1.0 / 60.0  
+        
+        if anim_state == "flee":
+            self.animator.animation_speed = 1.0 / 12
+        else:
+            self.animator.animation_speed = 1.0 / 8
+
+        surf = self.animator.get_current_frame(dt, anim_state, loop=loop)
+        
+        if not self.facing_right:
+            surf = pygame.transform.flip(surf, True, False)
+            
+        frames = self.animator.animations.get(anim_state, [])
+        done = (not loop) and len(frames) > 0 and self.animator.frame_index >= len(frames) - 1
+        
+        return surf, done
+
+    def update(self, player, obstacles):
+        if self.dead: return
+        self.tick_contact_timer()
+        self._apply_gravity(obstacles)
+        
+        dist = self.distance_to(player.rect)
+
+        # Logique de fuite passive
+        if dist < self.DETECT_RANGE:
+            self.state = self.ST_FLEE
+        elif self.state == self.ST_FLEE and dist > self.LOSE_RANGE:
+            self.state = self.ST_WANDER
+
+        if self.state == self.ST_WANDER:
+            tx = self._patrol_targets[self._patrol_idx]
+            d = 1 if tx > self.rect.centerx else -1
+            self.facing_right = (d == 1)
+            self._do_wander(obstacles)
+        elif self.state == self.ST_FLEE:
+            d = 1 if self.rect.centerx > player.rect.centerx else -1
+            self.facing_right = (d == 1)
+            self._try_move(d * self.FLEE_SPEED, obstacles)
+
+        # Mise à jour de l'image animée
+        anim_state = "idle"
+        loop = True
+        
+        if self.dead:
+            anim_state = "dead"
+            loop = False
+        elif self.state == self.ST_FLEE:
+            anim_state = "flee"
+        elif self.state == self.ST_WANDER:
+            anim_state = "wander"
+
+        self.image, _ = self._get_anim_frame(anim_state, loop=loop)
+
+
+# ================================================================
+#  4. RENARD PASSIF (Fox)
+# ================================================================
+
+class Fox(BaseEnemy):
+
+    PATROL_SPEED  = 2.0
+    PATROL_RADIUS = 80
+    FLEE_SPEED    = 4.5
+    DETECT_RANGE  = 220
+    LOSE_RANGE    = 400
+    ATTACK_DAMAGE = 0
+
+    ST_WANDER = "wander"
+    ST_RETURN = "return"
+    ST_FLEE   = "flee"
+
+    def __init__(self, pos, groups):
+        super().__init__(pos, hp=20, groups=groups, capacite_absorbable=None)
+        self.CONTACT_COOLDOWN = 60
+
+        # Chargement et préparation des animations
+        self.animations = self._load_animations()
+        self.animator = Animator(self.animations, fps=8)
+
+        if "idle" in self.animations and self.animations["idle"]:
+            self.image = self.animations["idle"][0]
+        else:
+            self.image = pygame.Surface((64, 64))
+            self.image.fill((240, 120, 30))
+
+        self.rect  = self.image.get_rect(topleft=pos)
+
+        self.state        = self.ST_WANDER
+        self.facing_right = True
+        self.vy           = 0
+
+    def _load_animations(self):
+        animations = {}
+        TARGET_SIZE = (64, 64)
+
+        path_option1 = os.path.join(CURRENT_DIR, "assets", "images", "monstre", "Fox", "Fox")
+        path_option2 = os.path.join(os.path.dirname(CURRENT_DIR), "assets", "images", "monstre", "Fox", "Fox")
+        sheet_dir = path_option1 if os.path.isdir(path_option1) else path_option2
+
+        file_mapping = {
+            "idle":   "Fox_Idle.png",
+            "wander": "Fox_walk.png",
+            "flee":   "Fox_Run.png",
+            "hurt":   "Fox_Hurt.png",
+            "dead":   "Fox_Death.png"
+        }
+
+        for state, fname in file_mapping.items():
+            path = os.path.join(sheet_dir, fname)
+            frames = []
+            if os.path.isfile(path):
+                try:
+                    img = pygame.image.load(path).convert_alpha()
+                    w, h = img.get_size()
+                    
+                    # On charge la ligne 3 (orientation droite, index 3 de la grille 32x32)
+                    row_index = 3
+                    row_y = row_index * 32
+                    
+                    num_frames = w // 32
+                    for i in range(num_frames):
+                        rect = pygame.Rect(i * 32, row_y, 32, 32)
+                        frame = img.subsurface(rect).copy()
+                        frame = pygame.transform.scale(frame, TARGET_SIZE)
+                        frames.append(frame)
+                except pygame.error as e:
+                    print(f"⚠️ Erreur de chargement pour {fname} : {e}")
+            
+            if frames:
+                animations[state] = frames
+
+        # Sécurité : Fallbacks
+        if "idle" not in animations:
+            if "wander" in animations:
+                animations["idle"] = animations["wander"]
+            else:
+                s = pygame.Surface(TARGET_SIZE, pygame.SRCALPHA)
+                pygame.draw.ellipse(s, (240, 120, 30), (16, 16, 32, 32))
+                animations["idle"] = [s]
+
+        return animations
+
+    def _get_anim_frame(self, anim_state, loop=True):
+        dt = 1.0 / 60.0  
+        
+        if anim_state == "flee":
+            self.animator.animation_speed = 1.0 / 12
+        else:
+            self.animator.animation_speed = 1.0 / 8
+
+        surf = self.animator.get_current_frame(dt, anim_state, loop=loop)
+        
+        if not self.facing_right:
+            surf = pygame.transform.flip(surf, True, False)
+            
+        frames = self.animator.animations.get(anim_state, [])
+        done = (not loop) and len(frames) > 0 and self.animator.frame_index >= len(frames) - 1
+        
+        return surf, done
+
+    def update(self, player, obstacles):
+        if self.dead: return
+        self.tick_contact_timer()
+        self._apply_gravity(obstacles)
+        
+        dist = self.distance_to(player.rect)
+
+        # Logique de fuite passive
+        if dist < self.DETECT_RANGE:
+            self.state = self.ST_FLEE
+        elif self.state == self.ST_FLEE and dist > self.LOSE_RANGE:
+            self.state = self.ST_WANDER
+
+        if self.state == self.ST_WANDER:
+            tx = self._patrol_targets[self._patrol_idx]
+            d = 1 if tx > self.rect.centerx else -1
+            self.facing_right = (d == 1)
+            self._do_wander(obstacles)
+        elif self.state == self.ST_FLEE:
+            d = 1 if self.rect.centerx > player.rect.centerx else -1
+            self.facing_right = (d == 1)
+            self._try_move(d * self.FLEE_SPEED, obstacles)
+
+        # Mise à jour de l'image animée
+        anim_state = "idle"
+        loop = True
+        
+        if self.dead:
+            anim_state = "dead"
+            loop = False
+        elif self.state == self.ST_FLEE:
+            anim_state = "flee"
+        elif self.state == self.ST_WANDER:
+            anim_state = "wander"
+
+        self.image, _ = self._get_anim_frame(anim_state, loop=loop)
+
+
+# ================================================================
+#  5. GOBELIN LANCIER (GoblinLancier)
+# ================================================================
+
+class GoblinLancier(BaseEnemy):
+
+    PATROL_SPEED  = 1
+    PATROL_RADIUS = 80
+    SPEED         = 3
+    LUNGE_SPEED   = 7.5
+    DETECT_RANGE  = 480
+    LOSE_RANGE    = 700
+    ATTACK_RANGE  = 60
+    ATTACK_DAMAGE = 14
+    LUNGE_DAMAGE  = 20
+    ATTACK_CD     = 75
+    LUNGE_CD      = 150
+    STUN_DURATION = 20
+
+    ST_WANDER = "wander"
+    ST_RETURN = "return"
+    ST_CHASE  = "chase"
+    ST_ATTACK = "attack"
+    ST_LUNGE  = "lunge"
+    ST_STUN   = "stun"
+
+    def __init__(self, pos, groups):
+        super().__init__(pos, hp=50, groups=groups, capacite_absorbable="slash")
+        self.CONTACT_COOLDOWN = 75
+
+        # Chargement et préparation des animations
+        self.animations = self._load_animations()
+        self.animator = Animator(self.animations, fps=8)
+
+        if "idle" in self.animations and self.animations["idle"]:
+            self.image = self.animations["idle"][0]
+        else:
+            self.image = pygame.Surface((160, 160))
+            self.image.fill((0, 160, 200))
+
+        self.rect  = self.image.get_rect(topleft=pos)
+
+        self.state          = self.ST_WANDER
+        self.facing_right   = True
+        self.attack_timer   = 0
+        self.lunge_cooldown = 0
+        self.lunge_timer    = 0
+        self.lunge_vx       = 0
+        self.stun_timer     = 0
+        self.vy             = 0
+
+    def _load_animations(self):
+        animations = {}
+        TARGET_SIZE = (160, 160)
+
+        path_option1 = os.path.join(CURRENT_DIR, "assets", "images", "monstre", "goblin_lancier")
+        path_option2 = os.path.join(os.path.dirname(CURRENT_DIR), "assets", "images", "monstre", "goblin_lancier")
+        sheet_dir = path_option1 if os.path.isdir(path_option1) else path_option2
+
+        file_mapping = {
+            "idle":   "Idle.png",
+            "wander": "Walk.png",
+            "return": "Walk.png",
+            "chase":  "Run.png",
+            "attack": "Attack_1.png",
+            "lunge":  "Run+attack.png",
+            "hurt":   "Hurt.png",
+            "dead":   "Dead.png"
+        }
+
+        for state, fname in file_mapping.items():
+            path = os.path.join(sheet_dir, fname)
+            frames = []
+            if os.path.isfile(path):
+                try:
+                    img = pygame.image.load(path).convert_alpha()
+                    w, h = img.get_size()
+                    
+                    if w > h:
+                        frame_size = h
+                        num_frames = w // frame_size
+                        for i in range(num_frames):
+                            rect = pygame.Rect(i * frame_size, 0, frame_size, frame_size)
+                            frame = img.subsurface(rect).copy()
+                            frame = pygame.transform.scale(frame, TARGET_SIZE)
+                            frames.append(frame)
+                    else:
+                        frame = pygame.transform.scale(img, TARGET_SIZE)
+                        frames.append(frame)
+                except pygame.error as e:
+                    print(f"⚠️ Erreur de chargement pour {fname} : {e}")
+            
+            if frames:
+                animations[state] = frames
+
+        # Sécurité : Fallbacks
+        if "idle" not in animations:
+            if "wander" in animations:
+                animations["idle"] = animations["wander"]
+            else:
+                s = pygame.Surface(TARGET_SIZE, pygame.SRCALPHA)
+                pygame.draw.ellipse(s, GREEN_DARK, (24, 24, 48, 48))
+                animations["idle"] = [s]
+
+        return animations
+
+    def _get_anim_frame(self, anim_state, loop=True):
+        dt = 1.0 / 60.0  
+        
+        if anim_state == "lunge":
+            self.animator.animation_speed = 1.0 / 12
+        elif anim_state == "chase":
+            self.animator.animation_speed = 1.0 / 10
+        elif anim_state == "attack":
+            self.animator.animation_speed = 1.0 / 8
+        else:
+            self.animator.animation_speed = 1.0 / 8
+
+        surf = self.animator.get_current_frame(dt, anim_state, loop=loop)
+        
+        if not self.facing_right:
+            surf = pygame.transform.flip(surf, True, False)
+            
+        frames = self.animator.animations.get(anim_state, [])
+        done = (not loop) and len(frames) > 0 and self.animator.frame_index >= len(frames) - 1
+        
+        return surf, done
+
+    def update(self, player, obstacles):
+        if self.dead: return
+        self.tick_contact_timer()
+        self._apply_gravity(obstacles)
+        
+        dist = self.distance_to(player.rect)
+
+        if self.attack_timer > 0: self.attack_timer -= 1
+        if self.lunge_cooldown > 0: self.lunge_cooldown -= 1
+        if self.stun_timer > 0:
+            self.stun_timer -= 1; self.state = self.ST_STUN; return
+
+        if self.state in (self.ST_WANDER, self.ST_RETURN):
+            if dist < self.DETECT_RANGE: 
+                self.state = self.ST_CHASE
+                if getattr(self, 'sound_manager', None):
+                    self.sound_manager.play("gobelin_detect")
+        elif self.state == self.ST_CHASE:
+            if dist <= self.ATTACK_RANGE:
+                self.state = self.ST_ATTACK
+            elif 100 < dist < 220 and self.lunge_cooldown == 0 and self.attack_timer == 0:
+                self.state = self.ST_LUNGE
+                self.lunge_timer = 30
+                self.lunge_vx = self.LUNGE_SPEED * (1 if player.rect.centerx > self.rect.centerx else -1)
+                self.facing_right = (self.lunge_vx > 0)
+                self.animator.current_state = "lunge"
+                self.animator.frame_index = 0
+            elif dist > self.LOSE_RANGE:
+                self.state = self.ST_RETURN
+        elif self.state == self.ST_ATTACK:
+            if dist > self.ATTACK_RANGE + 20:
+                self.state = self.ST_CHASE
+        elif self.state == self.ST_LUNGE:
+            self.lunge_timer -= 1
+            if self.lunge_timer <= 0:
+                self.lunge_cooldown = self.LUNGE_CD
+                self.state = self.ST_CHASE
+            else:
+                self._try_move(self.lunge_vx, obstacles)
+                if self.rect.colliderect(player.rect) and self.contact_timer == 0:
+                    player.take_damage(self.LUNGE_DAMAGE)
+                    self.contact_timer = self.CONTACT_COOLDOWN
+                    self.lunge_vx = 0
+                    self.lunge_timer = 0
+                    self.lunge_cooldown = self.LUNGE_CD
+                    self.state = self.ST_CHASE
+
+        d = 1 if player.rect.centerx > self.rect.centerx else -1
+        if self.state != self.ST_LUNGE:
+            self.facing_right = (d == 1)
+
+        if self.state == self.ST_WANDER:
+            tx = self._patrol_targets[self._patrol_idx]
+            d = 1 if tx > self.rect.centerx else -1
+            self.facing_right = (d == 1)
+            self._do_wander(obstacles)
+        elif self.state == self.ST_RETURN:
+            tx = self.spawn_pos[0]
+            d = 1 if tx > self.rect.centerx else -1
+            self.facing_right = (d == 1)
+            if self._do_return_to_spawn(obstacles): self.state = self.ST_WANDER
+        elif self.state == self.ST_CHASE:
+            self._try_move(d * self.SPEED, obstacles)
+        elif self.state == self.ST_ATTACK:
+            if self.attack_timer == 0 and self.contact_timer == 0:
+                player.take_damage(self.ATTACK_DAMAGE)
+                self.attack_timer  = self.ATTACK_CD
+                self.contact_timer = self.CONTACT_COOLDOWN
+                if getattr(self, 'sound_manager', None):
+                    self.sound_manager.play("gobelin_attack")
+                self.animator.current_state = "attack"
+                self.animator.frame_index = 0
+
+        # Mise à jour de l'image animée
+        anim_state = "idle"
+        loop = True
+        
+        if self.dead:
+            anim_state = "dead"
+            loop = False
+        elif self.stun_timer > 0:
+            anim_state = "hurt"
+            loop = False
+        elif self.animator.current_state == "lunge" and self.animator.frame_index < len(self.animator.animations.get("lunge", [])) - 1:
+            anim_state = "lunge"
+            loop = False
+        elif self.animator.current_state == "attack" and self.animator.frame_index < len(self.animator.animations.get("attack", [])) - 1:
+            anim_state = "attack"
+            loop = False
+        elif self.state == self.ST_CHASE:
+            anim_state = "chase"
+        elif self.state in (self.ST_WANDER, self.ST_RETURN):
+            anim_state = "wander"
+
+        self.image, _ = self._get_anim_frame(anim_state, loop=loop)
+
+    def take_damage(self, amount):
+        super().take_damage(amount)
+        if not self.dead:
+            self.stun_timer = self.STUN_DURATION
+            self.state      = self.ST_STUN
+
+    def on_death(self):
+        if getattr(self, 'sound_manager', None):
+            self.sound_manager.play("gobelin_death")
+
+
+# ================================================================
+#  6. GORGONE TERRIFIANTE (Gorgon)
+# ================================================================
+
+class Gorgon(BaseEnemy):
+
+    PATROL_SPEED     = 1
+    PATROL_RADIUS    = 80
+    SPEED            = 2
+    DETECT_RANGE     = 450
+    LOSE_RANGE       = 700
+    ATTACK_RANGE     = 48
+    ATTACK_DAMAGE    = 18
+    ATTACK_CD        = 80
+    SPECIAL_RANGE    = 350
+    SPECIAL_CD       = 180
+    STUN_DURATION    = 25
+
+    ST_WANDER  = "wander"
+    ST_RETURN  = "return"
+    ST_CHASE   = "chase"
+    ST_ATTACK  = "attack"
+    ST_SPECIAL = "special"
+    ST_STUN    = "stun"
+
+    def __init__(self, pos, groups):
+        super().__init__(pos, hp=60, groups=groups, capacite_absorbable="ice_shot")
+        self.CONTACT_COOLDOWN = 80
+
+        # Chargement et préparation des animations
+        self.animations = self._load_animations()
+        self.animator = Animator(self.animations, fps=8)
+
+        if "idle" in self.animations and self.animations["idle"]:
+            self.image = self.animations["idle"][0]
+        else:
+            self.image = pygame.Surface((128, 128))
+            self.image.fill((100, 200, 100))
+
+        self.rect  = self.image.get_rect(topleft=pos)
+
+        self.state            = self.ST_WANDER
+        self.facing_right     = True
+        self.attack_timer     = 0
+        self.special_cooldown = 0
+        self.special_timer    = 0
+        self.stun_timer       = 0
+        self.vy               = 0
+
+    def _load_animations(self):
+        animations = {}
+        TARGET_SIZE = (128, 128)
+
+        path_option1 = os.path.join(CURRENT_DIR, "assets", "images", "monstre", "Gorgon", "Gorgon_1")
+        path_option2 = os.path.join(os.path.dirname(CURRENT_DIR), "assets", "images", "monstre", "Gorgon", "Gorgon_1")
+        sheet_dir = path_option1 if os.path.isdir(path_option1) else path_option2
+
+        file_mapping = {
+            "idle":   "Idle.png",
+            "wander": "Walk.png",
+            "return": "Walk.png",
+            "chase":  "Run.png",
+            "attack": "Attack_1.png",
+            "special": "Special.png",
+            "hurt":   "Hurt.png",
+            "dead":   "Dead.png"
+        }
+
+        for state, fname in file_mapping.items():
+            path = os.path.join(sheet_dir, fname)
+            frames = []
+            if os.path.isfile(path):
+                try:
+                    img = pygame.image.load(path).convert_alpha()
+                    w, h = img.get_size()
+                    
+                    if w > h:
+                        frame_size = h
+                        num_frames = w // frame_size
+                        for i in range(num_frames):
+                            rect = pygame.Rect(i * frame_size, 0, frame_size, frame_size)
+                            frame = img.subsurface(rect).copy()
+                            frame = pygame.transform.scale(frame, TARGET_SIZE)
+                            frames.append(frame)
+                    else:
+                        frame = pygame.transform.scale(img, TARGET_SIZE)
+                        frames.append(frame)
+                except pygame.error as e:
+                    print(f"⚠️ Erreur de chargement pour {fname} : {e}")
+            
+            if frames:
+                animations[state] = frames
+
+        # Sécurité : Fallbacks
+        if "idle" not in animations:
+            if "wander" in animations:
+                animations["idle"] = animations["wander"]
+            else:
+                s = pygame.Surface(TARGET_SIZE, pygame.SRCALPHA)
+                pygame.draw.ellipse(s, (100, 200, 100), (24, 24, 48, 48))
+                animations["idle"] = [s]
+
+        return animations
+
+    def _get_anim_frame(self, anim_state, loop=True):
+        dt = 1.0 / 60.0  
+        
+        if anim_state == "special":
+            self.animator.animation_speed = 1.0 / 10
+        elif anim_state == "attack":
+            self.animator.animation_speed = 1.0 / 12
+        elif anim_state == "chase":
+            self.animator.animation_speed = 1.0 / 10
+        else:
+            self.animator.animation_speed = 1.0 / 8
+
+        surf = self.animator.get_current_frame(dt, anim_state, loop=loop)
+        
+        if not self.facing_right:
+            surf = pygame.transform.flip(surf, True, False)
+            
+        frames = self.animator.animations.get(anim_state, [])
+        done = (not loop) and len(frames) > 0 and self.animator.frame_index >= len(frames) - 1
+        
+        return surf, done
+
+    def update(self, player, obstacles):
+        if self.dead: return
+        self.tick_contact_timer()
+        self._apply_gravity(obstacles)
+        
+        dist = self.distance_to(player.rect)
+
+        if self.attack_timer > 0: self.attack_timer -= 1
+        if self.special_cooldown > 0: self.special_cooldown -= 1
+        if self.stun_timer > 0:
+            self.stun_timer -= 1; self.state = self.ST_STUN; return
+
+        if self.state in (self.ST_WANDER, self.ST_RETURN):
+            if dist < self.DETECT_RANGE: 
+                self.state = self.ST_CHASE
+                if getattr(self, 'sound_manager', None):
+                    self.sound_manager.play("gobelin_detect")
+        elif self.state == self.ST_CHASE:
+            if dist <= self.ATTACK_RANGE:
+                self.state = self.ST_ATTACK
+            elif dist <= self.SPECIAL_RANGE and self.special_cooldown == 0 and self.attack_timer == 0:
+                is_facing_player = (player.rect.centerx > self.rect.centerx and self.facing_right) or \
+                                   (player.rect.centerx < self.rect.centerx and not self.facing_right)
+                if is_facing_player:
+                    self.state = self.ST_SPECIAL
+                    self.special_timer = 45
+                    if hasattr(player, 'slow_timer'):
+                        player.slow_timer = 120
+                        player.slow_factor = 0.15
+                        if getattr(self, 'sound_manager', None):
+                            self.sound_manager.play("spirit_detect")
+                    self.animator.current_state = "special"
+                    self.animator.frame_index = 0
+            elif dist > self.LOSE_RANGE:
+                self.state = self.ST_RETURN
+        elif self.state == self.ST_ATTACK:
+            if dist > self.ATTACK_RANGE + 20:
+                self.state = self.ST_CHASE
+        elif self.state == self.ST_SPECIAL:
+            self.special_timer -= 1
+            if self.special_timer <= 0:
+                self.special_cooldown = self.SPECIAL_CD
+                self.state = self.ST_CHASE
+
+        d = 1 if player.rect.centerx > self.rect.centerx else -1
+        if self.state != self.ST_SPECIAL:
+            self.facing_right = (d == 1)
+
+        if self.state == self.ST_WANDER:
+            tx = self._patrol_targets[self._patrol_idx]
+            d = 1 if tx > self.rect.centerx else -1
+            self.facing_right = (d == 1)
+            self._do_wander(obstacles)
+        elif self.state == self.ST_RETURN:
+            tx = self.spawn_pos[0]
+            d = 1 if tx > self.rect.centerx else -1
+            self.facing_right = (d == 1)
+            if self._do_return_to_spawn(obstacles): self.state = self.ST_WANDER
+        elif self.state == self.ST_CHASE:
+            self._try_move(d * self.SPEED, obstacles)
+        elif self.state == self.ST_ATTACK:
+            if self.attack_timer == 0 and self.contact_timer == 0:
+                player.take_damage(self.ATTACK_DAMAGE)
+                self.attack_timer  = self.ATTACK_CD
+                self.contact_timer = self.CONTACT_COOLDOWN
+                if getattr(self, 'sound_manager', None):
+                    self.sound_manager.play("gobelin_attack")
+                self.animator.current_state = "attack"
+                self.animator.frame_index = 0
+
+        # Mise à jour de l'image animée
+        anim_state = "idle"
+        loop = True
+        
+        if self.dead:
+            anim_state = "dead"
+            loop = False
+        elif self.stun_timer > 0:
+            anim_state = "hurt"
+            loop = False
+        elif self.animator.current_state == "special" and self.animator.frame_index < len(self.animator.animations.get("special", [])) - 1:
+            anim_state = "special"
+            loop = False
+        elif self.animator.current_state == "attack" and self.animator.frame_index < len(self.animator.animations.get("attack", [])) - 1:
+            anim_state = "attack"
+            loop = False
+        elif self.state == self.ST_CHASE:
+            anim_state = "chase"
+        elif self.state in (self.ST_WANDER, self.ST_RETURN):
+            anim_state = "wander"
+
+        self.image, _ = self._get_anim_frame(anim_state, loop=loop)
+
+    def take_damage(self, amount):
+        super().take_damage(amount)
+        if not self.dead:
+            self.stun_timer = self.STUN_DURATION
+            self.state      = self.ST_STUN
+
+    def on_death(self):
+        if getattr(self, 'sound_manager', None):
+            self.sound_manager.play("gobelin_death")
+
+# ================================================================
+#  MECHA GOLEM (MechaGolem)
+# ================================================================
+
+class LaserBeam(pygame.sprite.Sprite):
+    def __init__(self, pos, facing_right, groups):
+        super().__init__(groups)
+        self.frames = []
+        path_option1 = os.path.join(CURRENT_DIR, "assets", "images", "monstre", "golem", "Laser_sheet.png")
+        path_option2 = os.path.join(os.path.dirname(CURRENT_DIR), "assets", "images", "monstre", "golem", "Laser_sheet.png")
+        path = path_option1 if os.path.isfile(path_option1) else path_option2
+        
+        if os.path.isfile(path):
+            try:
+                sheet = pygame.image.load(path).convert_alpha()
+                # 5 frames de 300x300 dans Laser_sheet.png (300x1500)
+                for i in range(5):
+                    rect = pygame.Rect(0, i * 300, 300, 300)
+                    frame = sheet.subsurface(rect).copy()
+                    frame = pygame.transform.scale(frame, (500, 100))
+                    if not facing_right:
+                        frame = pygame.transform.flip(frame, True, False)
+                    self.frames.append(frame)
+            except Exception as e:
+                print(f"⚠️ Erreur de chargement laser : {e}")
+                
+        if not self.frames:
+            # Fallback
+            s = pygame.Surface((500, 100), pygame.SRCALPHA)
+            pygame.draw.rect(s, (255, 60, 60, 200), (0, 35, 500, 30))
+            self.frames = [s]
+            
+        self.frame_index = 0
+        self.image = self.frames[0]
+        
+        self.facing_right = facing_right
+        if facing_right:
+            self.rect = self.image.get_rect(midleft=pos)
+        else:
+            self.rect = self.image.get_rect(midright=pos)
+            
+        self.duration = 45 # dure 45 frames
+        self.damage = 20 # Inflige de lourds dégâts
+
+    def update(self, obstacles):
+        self.duration -= 1
+        if self.duration <= 0:
+            self.kill()
+            return
+            
+        # Animation
+        self.frame_index = (self.frame_index + 0.15) % len(self.frames)
+        self.image = self.frames[int(self.frame_index)]
+
+
+class MechaGolemArm(pygame.sprite.Sprite):
+    SPEED = 8
+
+    def __init__(self, pos, direction, groups):
+        super().__init__(groups)
+        
+        path_option1 = os.path.join(CURRENT_DIR, "assets", "images", "monstre", "golem", "arm_projectile_glowing.png")
+        path_option2 = os.path.join(os.path.dirname(CURRENT_DIR), "assets", "images", "monstre", "golem", "arm_projectile_glowing.png")
+        path = path_option1 if os.path.isfile(path_option1) else path_option2
+        
+        if os.path.isfile(path):
+            try:
+                img = pygame.image.load(path).convert_alpha()
+                img = pygame.transform.scale(img, (40, 40))
+                if direction == -1:
+                    img = pygame.transform.flip(img, True, False)
+                self.image = img
+            except Exception:
+                self.image = self._create_placeholder(direction)
+        else:
+            self.image = self._create_placeholder(direction)
+            
+        self.rect      = self.image.get_rect(center=pos)
+        self.direction = direction
+        self.damage    = 15
+        self.lifetime  = 120
+
+    def _create_placeholder(self, direction):
+        s = pygame.Surface((30, 20), pygame.SRCALPHA)
+        pygame.draw.rect(s, (200, 100, 0), (0, 5, 25, 10))
+        if direction == -1:
+            s = pygame.transform.flip(s, True, False)
+        return s
+
+    def update(self, obstacles):
+        self.rect.x += self.SPEED * self.direction
+        if pygame.sprite.spritecollide(self, obstacles, False): self.kill()
+        self.lifetime -= 1
+        if self.lifetime <= 0:
+            self.kill()
+
+
+class MechaGolem(BaseEnemy):
+
+    PATROL_SPEED   = 1
+    PATROL_RADIUS  = 80
+    SPEED          = 2
+    DETECT_RANGE   = 550
+    LOSE_RANGE     = 800
+    ATTACK_RANGE   = 75
+    THROW_RANGE    = 320
+    LASER_RANGE    = 500
+    
+    ATTACK_DAMAGE  = 25
+    ATTACK_CD      = 100
+    STUN_DURATION  = 25
+
+    ST_WANDER      = "wander"
+    ST_RETURN      = "return"
+    ST_CHASE       = "chase"
+    ST_ATTACK      = "attack"
+    ST_THROW       = "throw"
+    ST_LASER       = "laser"
+    ST_STUN        = "stun"
+
+    def __init__(self, pos, groups, arrow_groups):
+        super().__init__(pos, hp=180, groups=groups, capacite_absorbable="stone_armor")
+        self.CONTACT_COOLDOWN = 100
+
+        self.animations = self._load_animations()
+        self.animator = Animator(self.animations, fps=8)
+
+        if "idle" in self.animations and self.animations["idle"]:
+            self.image = self.animations["idle"][0]
+        else:
+            self.image = pygame.Surface((160, 160))
+            self.image.fill((120, 120, 120))
+
+        self.rect  = self.image.get_rect(topleft=pos)
+
+        self.state          = self.ST_WANDER
+        self.facing_right   = True
+        self.attack_timer   = 0
+        self.throw_cooldown = 0
+        self.laser_cooldown = 0
+        self.throw_timer    = 0
+        self.laser_timer    = 0
+        self.laser_charged  = False
+        self.stun_timer     = 0
+        self.vy             = 0
+        
+        self.arrow_groups   = arrow_groups
+        self.arrows         = pygame.sprite.Group()
+
+    def _load_animations(self):
+        animations = {}
+        TARGET_SIZE = (160, 160)
+
+        path_option1 = os.path.join(CURRENT_DIR, "assets", "images", "monstre", "golem", "Character_sheet.png")
+        path_option2 = os.path.join(os.path.dirname(CURRENT_DIR), "assets", "images", "monstre", "golem", "Character_sheet.png")
+        path = path_option1 if os.path.isfile(path_option1) else path_option2
+
+        file_mapping = {
+            "idle":         (0, 4),
+            "wander":       (1, 8),
+            "return":       (1, 8),
+            "chase":        (1, 8),
+            "attack":       (2, 9),
+            "laser_charge": (3, 8),
+            "hurt":         (4, 7),
+            "dead":         (5, 7),
+            "block":        (6, 10),
+            "throw":        (7, 10),
+            "spawn":        (8, 4)
+        }
+
+        if os.path.isfile(path):
+            try:
+                sheet = pygame.image.load(path).convert_alpha()
+                cell_w, cell_h = 100, 100
+                for state, (row, count) in file_mapping.items():
+                    frames = []
+                    for col in range(count):
+                        rect = pygame.Rect(col * cell_w, row * cell_h, cell_w, cell_h)
+                        frame = sheet.subsurface(rect).copy()
+                        frame = pygame.transform.scale(frame, TARGET_SIZE)
+                        frames.append(frame)
+                    animations[state] = frames
+            except Exception as e:
+                print(f"⚠️ Erreur de découpage de la sheet Golem : {e}")
+
+        # Fallbacks
+        if "idle" not in animations:
+            s = pygame.Surface(TARGET_SIZE, pygame.SRCALPHA)
+            pygame.draw.rect(s, (100, 100, 100), (20, 20, 120, 120))
+            animations["idle"] = [s]
+
+        return animations
+
+    def _get_anim_frame(self, anim_state, loop=True):
+        dt = 1.0 / 60.0
+
+        if anim_state == "laser_charge":
+            self.animator.animation_speed = 1.0 / 12
+        elif anim_state == "throw":
+            self.animator.animation_speed = 1.0 / 10
+        elif anim_state == "attack":
+            self.animator.animation_speed = 1.0 / 10
+        else:
+            self.animator.animation_speed = 1.0 / 8
+
+        surf = self.animator.get_current_frame(dt, anim_state, loop=loop)
+
+        if not self.facing_right:
+            surf = pygame.transform.flip(surf, True, False)
+
+        frames = self.animator.animations.get(anim_state, [])
+        done = (not loop) and len(frames) > 0 and self.animator.frame_index >= len(frames) - 1
+
+        return surf, done
+
+    def update(self, player, obstacles):
+        if self.dead: return
+        self.tick_contact_timer()
+        self._apply_gravity(obstacles)
+
+        dist = self.distance_to(player.rect)
+
+        if self.attack_timer > 0: self.attack_timer -= 1
+        if self.throw_cooldown > 0: self.throw_cooldown -= 1
+        if self.laser_cooldown > 0: self.laser_cooldown -= 1
+        
+        if self.stun_timer > 0:
+            self.stun_timer -= 1
+            self.state = self.ST_STUN
+            return
+
+        if self.state in (self.ST_WANDER, self.ST_RETURN):
+            if dist < self.DETECT_RANGE:
+                self.state = self.ST_CHASE
+                if getattr(self, 'sound_manager', None):
+                    self.sound_manager.play("gobelin_detect")
+        elif self.state == self.ST_CHASE:
+            if dist <= self.ATTACK_RANGE and self.attack_timer == 0:
+                self.state = self.ST_ATTACK
+                self.animator.current_state = "attack"
+                self.animator.frame_index = 0
+            elif dist <= self.LASER_RANGE and self.laser_cooldown == 0 and self.attack_timer == 0:
+                self.state = self.ST_LASER
+                self.laser_timer = 90
+                self.laser_charged = False
+                self.animator.current_state = "laser_charge"
+                self.animator.frame_index = 0
+            elif dist <= self.THROW_RANGE and self.throw_cooldown == 0 and self.attack_timer == 0:
+                self.state = self.ST_THROW
+                self.throw_timer = 45
+                self.animator.current_state = "throw"
+                self.animator.frame_index = 0
+            elif dist > self.LOSE_RANGE:
+                self.state = self.ST_RETURN
+        elif self.state == self.ST_ATTACK:
+            pass
+        elif self.state == self.ST_THROW:
+            self.throw_timer -= 1
+            if self.throw_timer == 25:
+                d = 1 if player.rect.centerx > self.rect.centerx else -1
+                MechaGolemArm(self.rect.center, d, [self.arrows] + list(self.arrow_groups))
+                if getattr(self, 'sound_manager', None):
+                    self.sound_manager.play("gobelin_archer_attack")
+            if self.throw_timer <= 0:
+                self.throw_cooldown = 120
+                self.state = self.ST_CHASE
+        elif self.state == self.ST_LASER:
+            self.laser_timer -= 1
+            if self.laser_timer == 45 and not self.laser_charged:
+                self.laser_charged = True
+                d = 1 if player.rect.centerx > self.rect.centerx else -1
+                LaserBeam(self.rect.center, d == 1, [self.arrows] + list(self.arrow_groups))
+                if getattr(self, 'sound_manager', None):
+                    self.sound_manager.play("spirit_detect")
+            if self.laser_timer <= 0:
+                self.laser_cooldown = 200
+                self.state = self.ST_CHASE
+
+        # Déplacements
+        d = 1 if player.rect.centerx > self.rect.centerx else -1
+        if self.state not in (self.ST_LASER, self.ST_THROW):
+            self.facing_right = (d == 1)
+
+        if self.state == self.ST_WANDER:
+            tx = self._patrol_targets[self._patrol_idx]
+            d_patrol = 1 if tx > self.rect.centerx else -1
+            self.facing_right = (d_patrol == 1)
+            self._do_wander(obstacles)
+        elif self.state == self.ST_RETURN:
+            tx = self.spawn_pos[0]
+            d_return = 1 if tx > self.rect.centerx else -1
+            self.facing_right = (d_return == 1)
+            if self._do_return_to_spawn(obstacles): self.state = self.ST_WANDER
+        elif self.state == self.ST_CHASE:
+            self._try_move(d * self.SPEED, obstacles)
+        elif self.state == self.ST_ATTACK:
+            if self.attack_timer == 0 and self.contact_timer == 0:
+                player.take_damage(self.ATTACK_DAMAGE)
+                self.attack_timer  = self.ATTACK_CD
+                self.contact_timer = self.CONTACT_COOLDOWN
+                if getattr(self, 'sound_manager', None):
+                    self.sound_manager.play("gobelin_attack")
+                self.animator.current_state = "attack"
+                self.animator.frame_index = 0
+            
+            if self.animator.current_state == "attack" and self.animator.frame_index >= len(self.animator.animations.get("attack", [])) - 1:
+                self.state = self.ST_CHASE
+
+        # Mise à jour de l'image animée
+        anim_state = "idle"
+        loop = True
+
+        if self.dead:
+            anim_state = "dead"
+            loop = False
+        elif self.stun_timer > 0:
+            anim_state = "hurt"
+            loop = False
+        elif self.state == self.ST_ATTACK:
+            anim_state = "attack"
+            loop = False
+        elif self.state == self.ST_THROW:
+            anim_state = "throw"
+            loop = False
+        elif self.state == self.ST_LASER:
+            anim_state = "laser_charge"
+            loop = False
+        elif self.state == self.ST_CHASE:
+            anim_state = "chase"
+        elif self.state in (self.ST_WANDER, self.ST_RETURN):
+            anim_state = "wander"
+
+        self.image, _ = self._get_anim_frame(anim_state, loop=loop)
+
+    def take_damage(self, amount):
+        super().take_damage(amount)
+        if not self.dead:
+            self.stun_timer = self.STUN_DURATION
+            self.state      = self.ST_STUN
+
+    def on_death(self):
+        if getattr(self, 'sound_manager', None):
+            self.sound_manager.play("gobelin_death")
+

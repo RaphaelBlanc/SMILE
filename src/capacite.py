@@ -119,8 +119,8 @@ class Capacite:
                 self.player.sound_manager.play("dash")
             direction_finale = 1 if self.player.facing_right else -1
 
-            for _ in range(10):
-                self.player.hitbox.x += int(direction_finale * 12)
+            for _ in range(15):
+                self.player.hitbox.x += int(direction_finale * 16)
                 self.player.check_collision('horizontal', obstacles)
 
             self.player.direction.y = 0
