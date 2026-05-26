@@ -998,10 +998,14 @@ class Game:
                             mob.rect.y = m_state["y"]
                             if hasattr(mob, 'hp_current'):
                                 mob.hp_current = m_state["hp"]
-                                if mob.hp_current <= 0: mob.dead = True
+                                if mob.hp_current <= 0 and not getattr(mob, 'dead', False):
+                                    mob.dead = True
+                                    if hasattr(mob, 'on_death'): mob.on_death()
                             elif hasattr(mob, 'hp'):
                                 mob.hp = m_state["hp"]
-                                if mob.hp <= 0: mob.alive = False
+                                if mob.hp <= 0 and getattr(mob, 'alive', True):
+                                    mob.alive = False
+                                    if hasattr(mob, 'on_death'): mob.on_death()
                                 
                             if "astate" in m_state:
                                 mob.attack_state = m_state["astate"]
@@ -1011,25 +1015,27 @@ class Game:
                                 mob.attack_name = m_state["aname"]
                     for m in list(self.monster_sprites):
                         if getattr(m, 'id', None) not in received_ids:
-                            if hasattr(m, 'hp_current'):
-                                m.hp_current = 0
-                            elif hasattr(m, 'hp'):
-                                m.hp = 0
-                            if hasattr(m, 'dead'): m.dead = True
-                            if hasattr(m, 'alive'): m.alive = False
+                            if hasattr(m, 'hp_current'): m.hp_current = 0
+                            elif hasattr(m, 'hp'): m.hp = 0
                             
-                            if 'Esprit' in type(m).__name__:
-                                from monstre import ExplosionVFX
-                                ExplosionVFX(
-                                    m.rect.center,
-                                    getattr(m, 'COULEUR_CORPS', (255, 0, 0)),
-                                    getattr(m, 'EXPLOSION_RADIUS', 25),
-                                    getattr(m, 'vfx_groups', [self.visibles_sprites])
-                                )
-                                dist = pygame.math.Vector2(m.rect.center).distance_to(self.player.rect.center)
-                                if dist < getattr(m, 'EXPLOSION_RADIUS', 25) + 30:
-                                    if hasattr(m, '_apply_explosion'):
-                                        m._apply_explosion(self.player)
+                            if not getattr(m, 'client_death_processed', False):
+                                m.client_death_processed = True
+                                if hasattr(m, 'dead'): m.dead = True
+                                if hasattr(m, 'alive'): m.alive = False
+                                if hasattr(m, 'on_death'): m.on_death()
+                                
+                                if 'Esprit' in type(m).__name__:
+                                    from monstre import ExplosionVFX
+                                    ExplosionVFX(
+                                        m.rect.center,
+                                        getattr(m, 'COULEUR_CORPS', (255, 0, 0)),
+                                        getattr(m, 'EXPLOSION_RADIUS', 25),
+                                        getattr(m, 'vfx_groups', [self.visibles_sprites])
+                                    )
+                                    dist = pygame.math.Vector2(m.rect.center).distance_to(self.player.rect.center)
+                                    if dist < getattr(m, 'EXPLOSION_RADIUS', 25) + 30:
+                                        if hasattr(m, '_apply_explosion'):
+                                            m._apply_explosion(self.player)
                 elif msg.get("action") == "respawn_team":
                     self._respawn()
 
