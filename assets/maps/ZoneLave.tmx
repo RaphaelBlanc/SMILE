@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.10" tiledversion="1.12.1" orientation="orthogonal" renderorder="right-down" width="172" height="94" tilewidth="32" tileheight="32" infinite="0" nextlayerid="6" nextobjectid="33">
+<map version="1.10" tiledversion="1.12.1" orientation="orthogonal" renderorder="right-down" width="172" height="94" tilewidth="32" tileheight="32" infinite="0" nextlayerid="6" nextobjectid="34">
  <tileset firstgid="1" source="tiles_jeu.tsx"/>
  <imagelayer id="2" name="Background">
   <image source="../images/ZoneLave.png" width="5504" height="3008"/>
@@ -106,7 +106,7 @@
   <object id="2" type="Porte_To_Glace" x="5328" y="1101">
    <point/>
   </object>
-  <object id="4" type="Spawn_From_Glace" x="5292" y="1102">
+  <object id="4" type="Spawn_From_Glace" x="5225.5" y="1101.5">
    <point/>
   </object>
   <object id="5" type="Spawn_Lave" x="693" y="523">
