@@ -62,6 +62,7 @@ class BaseEnemy(pygame.sprite.Sprite):
         self.hp_max     = hp
         self.hp_current = hp
         self.dead       = False
+        self.death_finished = False
         self.capacite_absorbable = capacite_absorbable
 
         self.contact_timer    = 0
@@ -90,7 +91,7 @@ class BaseEnemy(pygame.sprite.Sprite):
             self.on_death()
 
     def on_death(self):
-        pass # Let main.py handle the actual kill() so it can process death logic
+        self.death_finished = True # Par défaut, meurt instantanément sauf si overriden par une animation de mort
 
     def tick_contact_timer(self):
         if self.contact_timer > 0:
@@ -281,7 +282,12 @@ class ChienEnrage(BaseEnemy):
         return horizontalement_proche and clairement_au_dessus and en_l_air
 
     def update(self, player, obstacles):
-        if self.dead: return
+        if self.dead:
+            surf, done = self._get_anim_frame("dead", loop=False)
+            self.image = surf
+            if done:
+                self.death_finished = True
+            return
         self.tick_contact_timer()
         self._apply_gravity(obstacles)
         
@@ -534,7 +540,12 @@ class GoblinMelee(BaseEnemy):
         return surf, done
 
     def update(self, player, obstacles):
-        if self.dead: return
+        if self.dead:
+            surf, done = self._get_anim_frame("dead", loop=False)
+            self.image = surf
+            if done:
+                self.death_finished = True
+            return
         self.tick_contact_timer()
         self._apply_gravity(obstacles)
         
@@ -616,6 +627,8 @@ class GoblinMelee(BaseEnemy):
             self.state      = self.ST_STUN
 
     def on_death(self):
+        self.animator.current_state = "dead"
+        self.animator.frame_index = 0
         if getattr(self, 'sound_manager', None):
             self.sound_manager.play("gobelin_death")
 
@@ -781,7 +794,12 @@ class GoblinArcher(BaseEnemy):
         return surf, done
 
     def update(self, player, obstacles):
-        if self.dead: return
+        if self.dead:
+            surf, done = self._get_anim_frame("dead", loop=False)
+            self.image = surf
+            if done:
+                self.death_finished = True
+            return
         self.tick_contact_timer()
         self._apply_gravity(obstacles)
         
@@ -869,6 +887,8 @@ class GoblinArcher(BaseEnemy):
         self.image, _ = self._get_anim_frame(anim_state, loop=loop)
 
     def on_death(self):
+        self.animator.current_state = "dead"
+        self.animator.frame_index = 0
         if getattr(self, 'sound_manager', None):
             self.sound_manager.play("gobelin_death")
 
@@ -1008,6 +1028,7 @@ class EspritBase(BaseEnemy):
                 self.vy = 0; self.on_floor = True
 
     def on_death(self):
+        self.death_finished = True
         if getattr(self, 'sound_manager', None):
             self.sound_manager.play("spirit_death")
 
@@ -1433,7 +1454,12 @@ class Deer(BaseEnemy):
         return surf, done
 
     def update(self, player, obstacles):
-        if self.dead: return
+        if self.dead:
+            surf, done = self._get_anim_frame("dead", loop=False)
+            self.image = surf
+            if done:
+                self.death_finished = True
+            return
         self.tick_contact_timer()
         self._apply_gravity(obstacles)
         
@@ -1468,6 +1494,10 @@ class Deer(BaseEnemy):
             anim_state = "wander"
 
         self.image, _ = self._get_anim_frame(anim_state, loop=loop)
+
+    def on_death(self):
+        self.animator.current_state = "dead"
+        self.animator.frame_index = 0
 
 
 # ================================================================
@@ -1582,7 +1612,12 @@ class Fox(BaseEnemy):
         return surf, done
 
     def update(self, player, obstacles):
-        if self.dead: return
+        if self.dead:
+            surf, done = self._get_anim_frame("dead", loop=False)
+            self.image = surf
+            if done:
+                self.death_finished = True
+            return
         self.tick_contact_timer()
         self._apply_gravity(obstacles)
         
@@ -1617,6 +1652,10 @@ class Fox(BaseEnemy):
             anim_state = "wander"
 
         self.image, _ = self._get_anim_frame(anim_state, loop=loop)
+
+    def on_death(self):
+        self.animator.current_state = "dead"
+        self.animator.frame_index = 0
 
 
 # ================================================================
@@ -1748,7 +1787,12 @@ class GoblinLancier(BaseEnemy):
         return surf, done
 
     def update(self, player, obstacles):
-        if self.dead: return
+        if self.dead:
+            surf, done = self._get_anim_frame("dead", loop=False)
+            self.image = surf
+            if done:
+                self.death_finished = True
+            return
         self.tick_contact_timer()
         self._apply_gravity(obstacles)
         
@@ -1850,6 +1894,8 @@ class GoblinLancier(BaseEnemy):
             self.state      = self.ST_STUN
 
     def on_death(self):
+        self.animator.current_state = "dead"
+        self.animator.frame_index = 0
         if getattr(self, 'sound_manager', None):
             self.sound_manager.play("gobelin_death")
 
@@ -1981,7 +2027,12 @@ class Gorgon(BaseEnemy):
         return surf, done
 
     def update(self, player, obstacles):
-        if self.dead: return
+        if self.dead:
+            surf, done = self._get_anim_frame("dead", loop=False)
+            self.image = surf
+            if done:
+                self.death_finished = True
+            return
         self.tick_contact_timer()
         self._apply_gravity(obstacles)
         
@@ -2080,6 +2131,8 @@ class Gorgon(BaseEnemy):
             self.state      = self.ST_STUN
 
     def on_death(self):
+        self.animator.current_state = "dead"
+        self.animator.frame_index = 0
         if getattr(self, 'sound_manager', None):
             self.sound_manager.play("gobelin_death")
 
@@ -2300,7 +2353,12 @@ class MechaGolem(BaseEnemy):
         return surf, done
 
     def update(self, player, obstacles):
-        if self.dead: return
+        if self.dead:
+            surf, done = self._get_anim_frame("dead", loop=False)
+            self.image = surf
+            if done:
+                self.death_finished = True
+            return
         self.tick_contact_timer()
         self._apply_gravity(obstacles)
 
@@ -2425,6 +2483,8 @@ class MechaGolem(BaseEnemy):
             self.state      = self.ST_STUN
 
     def on_death(self):
+        self.animator.current_state = "dead"
+        self.animator.frame_index = 0
         if getattr(self, 'sound_manager', None):
             self.sound_manager.play("gobelin_death")
 

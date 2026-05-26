@@ -1094,12 +1094,10 @@ class Game:
                 if pygame.time.get_ticks() - self.last_save_time >= 120000:
                     self.save_game()
                     self.last_save_time = pygame.time.get_ticks()
-            # Joueur local (le client ne contrôle son perso que si rôle client,
-            # le host contrôle le sien normalement)
-            if self.player.hp_current > 0:
-                # En mode client on laisse quand même le joueur se mettre à jour
-                # visuellement (la position sera écrasée par l'état réseau)
-                self.player.update(self.obstacle_sprites, self.ladder_sprites, dt)
+            # En mode client on laisse quand même le joueur se mettre à jour
+            # visuellement (la position sera écrasée par l'état réseau).
+            # On le met toujours à jour pour qu'il puisse jouer son animation de mort s'il meurt.
+            self.player.update(self.obstacle_sprites, self.ladder_sprites, dt)
                 
             if self.is_multi and getattr(self, 'remote_player', None):
                 self.remote_player.update(dt)
@@ -1151,14 +1149,15 @@ class Game:
                 if hasattr(m, 'heal_allies'):
                     m.heal_allies(self.monster_sprites)
 
-                if m.rect.colliderect(self.player.hitbox) and self.player.hp_current > 0:
+                is_m_dead = getattr(m, 'dead', False) or not getattr(m, 'alive', True)
+                if not is_m_dead and m.rect.colliderect(self.player.hitbox) and self.player.hp_current > 0:
                     if getattr(m, 'contact_timer', 0) <= 0:
                         self.player.take_damage(getattr(m, 'ATTACK_DAMAGE', 10))
                         m.contact_timer = getattr(m, 'CONTACT_COOLDOWN', 60)
                         if self.player.hp_current <= 0:
                             self.killed_by_boss = ('Boss' in type(m).__name__ or hasattr(m, 'attack_state'))
 
-                if hasattr(m, 'attack_state'):
+                if not is_m_dead and hasattr(m, 'attack_state'):
                     # Collision pour les projectiles et ondes de choc internes du boss
                     for p in m.projectiles:
                         if p.rect.colliderect(self.player.hitbox) and self.player.hp_current > 0:
@@ -1179,7 +1178,8 @@ class Game:
                             if self.player.hp_current <= 0:
                                 self.killed_by_boss = True
 
-                if getattr(m, 'dead', False) or (hasattr(m, 'alive') and not m.alive):
+                is_m_dead_finished = (getattr(m, 'dead', False) and getattr(m, 'death_finished', True)) or (hasattr(m, 'alive') and not m.alive and getattr(m, 'death_finished', True))
+                if is_m_dead_finished:
                     mob_type = type(m).__name__
                     self.score      += MOB_XP.get(mob_type, 10)
                     self.kill_count += 1

@@ -236,25 +236,45 @@ class Player(pygame.sprite.Sprite):
 
     def update(self, obstacles, ladder_sprites, dt):
         
-        self.get_input(ladder_sprites)
-        self.get_status()
+        if self.hp_current <= 0:
+            self.status = 'death'
+            self.direction.x = 0
+            self.apply_gravity()
+            self.move(obstacles, ladder_sprites)
+            self.capacite.projectiles.update(obstacles)
+        else:
+            self.get_input(ladder_sprites)
+            self.get_status()
 
-        # Timers
-        if self.hurt_timer > 0: self.hurt_timer -= 1
-        if self.slow_timer > 0: self.slow_timer -= 1
-        else: self.slow_factor = 1.0
+            # Timers
+            if self.hurt_timer > 0: self.hurt_timer -= 1
+            if self.slow_timer > 0: self.slow_timer -= 1
+            else: self.slow_factor = 1.0
 
-        if self.burn_timer > 0:
-            self.burn_timer -= 1
-            if self.burn_timer % 60 == 0:
-                self.hp_current = max(0, self.hp_current - int(self.burn_dps))
+            if self.burn_timer > 0:
+                self.burn_timer -= 1
+                if self.burn_timer % 60 == 0:
+                    self.hp_current = max(0, self.hp_current - int(self.burn_dps))
 
-        if self.is_poisoned and self.poison_timer > 0:
-            self.poison_timer -= 1
-            if self.poison_timer % 60 == 0:
-                self.hp_current = max(0, self.hp_current - int(self.poison_dps))
-            if self.poison_timer <= 0:
-                self.is_poisoned = False
+            if self.is_poisoned and self.poison_timer > 0:
+                self.poison_timer -= 1
+                if self.poison_timer % 60 == 0:
+                    self.hp_current = max(0, self.hp_current - int(self.poison_dps))
+                if self.poison_timer <= 0:
+                    self.is_poisoned = False
+
+            # Capacités et Projectiles
+            self.capacite.bdf(self.keybinds["attack"])
+            self.capacite.dash(obstacles, self.keybinds["dash"])
+            self.capacite.projectiles.update(obstacles)
+
+            if self.on_ladder:
+                self.apply_ladder_physics()
+            else:
+                self.apply_gravity()
+
+            # Mouvement et Alignement de l'image
+            self.move(obstacles, ladder_sprites)
 
         # Animation Vitesse
         if self.status and 'sprint' in self.status:
@@ -272,19 +292,6 @@ class Player(pygame.sprite.Sprite):
             blink = self.image.copy()
             blink.set_alpha(80)
             self.image = blink
-
-        # Capacités et Projectiles
-        self.capacite.bdf(self.keybinds["attack"])
-        self.capacite.dash(obstacles, self.keybinds["dash"])
-        self.capacite.projectiles.update(obstacles)
-
-        if self.on_ladder:
-            self.apply_ladder_physics()
-        else:
-            self.apply_gravity()
-
-        # Mouvement et Alignement de l'image
-        self.move(obstacles, ladder_sprites)
 
     # -------------------------------------------------------------------------
     # MOUVEMENT & COLLISION (Utilise la Hitbox)

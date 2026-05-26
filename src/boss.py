@@ -284,6 +284,7 @@ class BossBase(pygame.sprite.Sprite):
         self.hp           = self.HP_MAX
         self.phase        = 1
         self.alive        = True
+        self.death_finished = True
         self.floor_y      = floor_y
         self.obstacles    = room_obstacles
         self.vy           = 0.0
@@ -433,7 +434,14 @@ class BossBase(pygame.sprite.Sprite):
 
     # ── Update commun ─────────────────────────────────────────────────────────
     def update(self, player_rect, dt):
-        if not self.alive: return
+        if not self.alive:
+            if getattr(self, "death_finished", True):
+                return
+            dt_ms = dt * 1000
+            self._apply_gravity()
+            self._move_and_collide()
+            self._update_visual(dt_ms)
+            return
         dt_ms = dt * 1000
         self._screen_shake_flag = False
         self._update_phase()
@@ -565,6 +573,7 @@ class Pyros(BossBase):
 
     def __init__(self, pos, obstacles, floor_y):
         super().__init__(pos, obstacles, floor_y)
+        self.death_finished = False
         self._slam_landed = False
         self._slam_warned = False
         self._slam_warning= None
@@ -663,6 +672,7 @@ class Pyros(BossBase):
                 if self.anim_idx >= len(frames):
                     if anim_key == "dead":
                         self.anim_idx = len(frames) - 1
+                        self.death_finished = True
                     else:
                         self.anim_idx = 0
                         
