@@ -447,7 +447,7 @@ class Game:
 
         player_spawn = (200, 200)
         try:
-            for obj in tmx_data.get_layer_by_name('Objets'):
+            for obj_index, obj in enumerate(tmx_data.get_layer_by_name('Objets')):
                 obj_type = getattr(obj, 'type', None) or obj.properties.get('type', None)
                 if not obj_type:
                     obj_type = getattr(obj, 'name', None)
@@ -515,11 +515,13 @@ class Game:
                     if not self.boss_glace_dead:
                         floor_y = pos[1] + getattr(obj, 'height', 32)
                         boss = Glacius(pos, self.obstacle_sprites, floor_y)
+                        boss.id = getattr(obj, 'id', obj_index)
                         self.monster_sprites.add(boss)
                 elif obj_type_lower == 'spawn_boss_lave':
                     if not self.boss_lave_dead:
                         floor_y = pos[1] + getattr(obj, 'height', 32)
                         boss = Pyros(pos, self.obstacle_sprites, floor_y)
+                        boss.id = getattr(obj, 'id', obj_index)
                         self.monster_sprites.add(boss)
                     else:
                         self.pnj_boss_pos = pos
@@ -529,6 +531,7 @@ class Game:
                     if (self.current_map_name, pos) not in self.killed_mobs:
                         mob = self._spawn_mob(obj_type, pos)
                         if mob:
+                            mob.id = getattr(obj, 'id', obj_index)
                             mob.spawn_pos = pos
         except ValueError:
             print("INFO : Calque 'Objets' introuvable — monstres non charges depuis Tiled.")
