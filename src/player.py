@@ -318,6 +318,18 @@ class Player(pygame.sprite.Sprite):
 
         if hits:
             if direction == 'horizontal':
+                # ---- AUTO-STEP (Minecraft like) ----
+                # Find the highest obstacle we collided with (lowest Y)
+                highest_top = min(hit.rect.top for hit in hits)
+                step_height = self.hitbox.bottom - highest_top
+                
+                # If the step is small enough (e.g. 2 tiles of 32px + small margin)
+                if 0 < step_height <= 66:
+                    self.hitbox.y -= step_height
+                    self.rect = temp_rect
+                    return
+                        
+                # Normal horizontal collision
                 if self.direction.x > 0:
                     self.hitbox.right = hits[0].rect.left
                 if self.direction.x < 0:
@@ -325,12 +337,12 @@ class Player(pygame.sprite.Sprite):
 
             if direction == 'vertical':
                 if self.direction.y > 0:
-                    self.hitbox.bottom = hits[0].rect.top
+                    self.hitbox.bottom = min(hit.rect.top for hit in hits)
                     self.direction.y = 0
                     self.count_jump  = 0
                     self.on_ladder   = False
                 if self.direction.y < 0:
-                    self.hitbox.top    = hits[0].rect.bottom
+                    self.hitbox.top    = max(hit.rect.bottom for hit in hits)
                     self.direction.y = 0
 
     # -------------------------------------------------------------------------
