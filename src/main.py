@@ -20,7 +20,7 @@ from monstre import (
     EspritFeu, EspritGlace, EspritFoudre, EspritNature,
     GolemPierre, Fox, Deer, GoblinLancier, Gorgon, MechaGolem,
 )
-from config import ROOT_DIR
+from config import ROOT_DIR, format_time
 import os
 
 #DEFINITON CONSTANTE##################################################################
@@ -253,6 +253,9 @@ class RemotePlayer(pygame.sprite.Sprite):
         self.rect.y = new_y
         self.hp_current = state.get("hp", self.hp_current)
 
+    def take_damage(self, amount):
+        pass  # Les dégâts du joueur distant sont gérés de son côté et synchronisés via le réseau
+
     def update(self, dt):
         loop = (self.status != 'death')
         self.image = self.animator.get_current_frame(dt, self.status, loop=loop)
@@ -413,6 +416,8 @@ class Game:
         self.show_menu_overlay = False     # True pour afficher l'overlay en multi
         self.remote_player = None          # RemotePlayer (l'autre joueur)
         self.net_timer     = 0             # compteur pour envoi état (host)
+        self.pending_damage_events = []
+        self.last_transition_flag  = ""
 
         # --- SON / MENU ---
         self.sound_manager = SoundManager()
@@ -450,6 +455,7 @@ class Game:
         self.spawn_from_glace_point = None
         self.spawn_from_lave_point = None
         self.pnj_boss_pos = None
+        self.play_time = 0.0
 
         # Joueur local initial (sera repositionné par load_map)
         self.player = Player((200, 200), self.sound_manager, self.menu.keybinds)
@@ -496,6 +502,7 @@ class Game:
         self.npc_sprites.empty()
         self.ladder_sprites.empty()
         self.monster_sprites.empty()
+        self.mob_counter = 0
         self.enemy_proj_sprites.empty()
         self.vfx_sprites.empty()
         self.transition_sprites.empty()
@@ -548,7 +555,7 @@ class Game:
 
         player_spawn = (200, 200)
         try:
-            for obj in tmx_data.get_layer_by_name('Objets'):
+            for obj_index, obj in enumerate(tmx_data.get_layer_by_name('Objets')):
                 obj_type = getattr(obj, 'type', None) or obj.properties.get('type', None)
                 if not obj_type:
                     obj_type = getattr(obj, 'name', None)
@@ -616,15 +623,13 @@ class Game:
                     if not self.boss_glace_dead:
                         floor_y = pos[1] + getattr(obj, 'height', 32)
                         boss = Glacius(pos, self.obstacle_sprites, floor_y)
-                        boss.id = self.mob_counter
-                        self.mob_counter += 1
+                        boss.id = getattr(obj, 'id', obj_index)
                         self.monster_sprites.add(boss)
                 elif obj_type_lower == 'spawn_boss_lave':
                     if not self.boss_lave_dead:
                         floor_y = pos[1] + getattr(obj, 'height', 32)
                         boss = Pyros(pos, self.obstacle_sprites, floor_y)
-                        boss.id = self.mob_counter
-                        self.mob_counter += 1
+                        boss.id = getattr(obj, 'id', obj_index)
                         self.monster_sprites.add(boss)
                     else:
                         self.pnj_boss_pos = pos
@@ -634,35 +639,42 @@ class Game:
                     if (self.current_map_name, pos) not in self.killed_mobs:
                         mob = self._spawn_mob(obj_type, pos)
                         if mob:
+                            mob.id = getattr(obj, 'id', obj_index)
                             mob.spawn_pos = pos
         except ValueError:
             print("INFO : Calque 'Objets' introuvable — monstres non charges depuis Tiled.")
 
 
 
+        self.last_transition_flag = ""
         if self.killed_by_boss and hasattr(self, 'zone_boss_respawn_point'):
-            # _respawn will handle setting the position if player dies.
-            # If load_map is called normally (e.g. debugging), just place them there.
+            self.last_transition_flag = "boss"
             self.player.set_position(self.zone_boss_respawn_point)
             self.respawn_point = self.zone_boss_respawn_point
         elif self.coming_from_boss and self.spawn_from_boss_point:
+            self.last_transition_flag = "boss"
             self.player.set_position(self.spawn_from_boss_point)
             self.respawn_point = self.spawn_from_boss_point
         elif self.coming_from_glace and self.spawn_from_glace_point:
+            self.last_transition_flag = "glace"
             self.player.set_position(self.spawn_from_glace_point)
             self.respawn_point = self.spawn_from_glace_point
         elif self.coming_from_lave and self.spawn_from_lave_point:
+            self.last_transition_flag = "lave"
             self.player.set_position(self.spawn_from_lave_point)
             self.respawn_point = self.spawn_from_lave_point
         elif self.coming_from_teleport and getattr(self, 'spawn_porte_glace_point', None):
+            self.last_transition_flag = "tp_glace"
             tp_pos = (self.spawn_porte_glace_point[0] - 50, self.spawn_porte_glace_point[1] - 150)
             self.player.set_position(tp_pos)
             self.respawn_point = tp_pos
         elif getattr(self, 'coming_from_teleport_lave', False) and getattr(self, 'spawn_porte_to_glace_point', None):
+            self.last_transition_flag = "tp_lave"
             safe_pos = (self.spawn_porte_to_glace_point[0] - 100, self.spawn_porte_to_glace_point[1] - 150)
             self.player.set_position(safe_pos)
             self.respawn_point = safe_pos
         else:
+            self.last_transition_flag = "none"
             self.player.set_position(player_spawn)
             self.respawn_point = player_spawn
             
@@ -679,15 +691,26 @@ class Game:
         self.camera.offset.x = max(0, min(target_x, self.camera.map_width - SCREEN_WIDTH))
         self.camera.offset.y = max(0, min(target_y, self.camera.map_height - SCREEN_HEIGHT))
 
+        # Auto-save after changing map/zone
+        if getattr(self, 'game_started', False):
+            self.save_game()
+
     def teleport_from_boss(self):
         self.coming_from_teleport = True
+        if self.is_multi and self.network and self.network.role == "client":
+            self.network._send({"action": "request_map_change", "dest": "assets/maps/map_glace.tmx", "req_flag": "tp_glace"})
+            return
         self.load_map('assets/maps/map_glace.tmx')
 
     def teleport_from_boss_lave(self):
         self.coming_from_teleport_lave = True
+        if self.is_multi and self.network and self.network.role == "client":
+            self.network._send({"action": "request_map_change", "dest": "assets/maps/ZoneLave.tmx", "req_flag": "tp_lave"})
+            return
         self.load_map('assets/maps/ZoneLave.tmx')
 
     def load_game(self, slot):
+        is_same_slot = (getattr(self, 'current_save_slot', None) == slot)
         self.current_save_slot = slot
         filename = f"save_{slot}.json"
         if os.path.exists(filename):
@@ -700,6 +723,13 @@ class Game:
                 # Restore game state
                 self.score = data.get('score', 0)
                 self.kill_count = data.get('kill_count', 0)
+                
+                loaded_play_time = data.get('play_time', 0.0)
+                if is_same_slot and hasattr(self, 'play_time'):
+                    self.play_time = max(self.play_time, loaded_play_time)
+                else:
+                    self.play_time = loaded_play_time
+                    
                 self.boss_glace_dead = data.get('boss_glace_dead', False)
                 self.boss_lave_dead = data.get('boss_lave_dead', False)
                 
@@ -730,6 +760,7 @@ class Game:
             # Start fresh
             self.score = 0
             self.kill_count = 0
+            self.play_time = 0.0
             self.boss_glace_dead = False
             self.boss_lave_dead = False
             self.killed_mobs.clear()
@@ -758,7 +789,8 @@ class Game:
             'kill_count': self.kill_count,
             'boss_glace_dead': self.boss_glace_dead,
             'boss_lave_dead': self.boss_lave_dead,
-            'killed_mobs': killed_list
+            'killed_mobs': killed_list,
+            'play_time': self.play_time
         }
         
         try:
@@ -835,18 +867,36 @@ class Game:
 
         if self.network.role == "host":
             self.net_timer += dt
-            if self.net_timer >= 1 / 120:          # 120 fois/seconde (très fluide)
+            if self.net_timer >= 1 / 60:          # 60 fois/seconde (très fluide)
                 self.net_timer = 0
                 state = {
+                    "map_name": getattr(self, "current_map_name", ""),
+                    "map_flag": getattr(self, "last_transition_flag", ""),
+                    "boss_glace_dead": getattr(self, "boss_glace_dead", False),
+                    "boss_lave_dead": getattr(self, "boss_lave_dead", False),
                     "p1_x":  self.player.rect.x,
                     "p1_y":  self.player.rect.y,
                     "p1_hp": self.player.hp_current,
                     "p1_status": self.player.status,
                 }
                 mobs_state = []
+                boss_projs = []
+                boss_shockwaves = []
+                boss_hazards = []
                 for m in self.monster_sprites:
-                    mobs_state.append({"id": getattr(m, 'id', -1), "x": m.rect.x, "y": m.rect.y, "hp": m.hp_current})
+                    hp_val = getattr(m, 'hp_current', getattr(m, 'hp', 0))
+                    mobs_state.append({"id": getattr(m, 'id', -1), "x": m.rect.x, "y": m.rect.y, "hp": hp_val})
+                    if hasattr(m, 'attack_state'):
+                        for p in getattr(m, 'projectiles', []):
+                            boss_projs.append({"x": p.rect.x, "y": p.rect.y})
+                        for sw in getattr(m, 'shockwaves', []):
+                            boss_shockwaves.append({"x": sw.rect.x, "y": sw.rect.y, "w": sw.rect.width, "h": sw.rect.height})
+                        for hz in getattr(m, 'hazards', []):
+                            boss_hazards.append({"x": hz.rect.x, "y": hz.rect.y, "w": hz.rect.width, "h": hz.rect.height})
                 state["mobs"] = mobs_state
+                state["boss_projs"] = boss_projs
+                state["boss_shockwaves"] = boss_shockwaves
+                state["boss_hazards"] = boss_hazards
                 state["projs"] = [{"x": p.rect.x, "y": p.rect.y} for p in self.player.capacite.projectiles]
                 state["enemy_projs"] = [{"x": p.rect.x, "y": p.rect.y} for p in self.enemy_proj_sprites]
                 self.network.send_game_state(state)
@@ -860,29 +910,55 @@ class Game:
                         self.remote_player.hp_current = msg.get("p2_hp", self.remote_player.hp_current)
                         self.remote_player.status     = msg.get("p2_status", self.remote_player.status)
                     self.remote_projs = msg.get("projs", [])
+                    for dmg in msg.get("damage_events", []):
+                        mob_id = dmg.get("mob_id")
+                        mob = next((m for m in self.monster_sprites if getattr(m, 'id', None) == mob_id), None)
+                        if mob:
+                            mob.take_damage(dmg.get("amount", 20))
                 elif msg.get("action") == "damage_mob":
-                    mob_id = msg.get("mob_id")
-                    mob = next((m for m in self.monster_sprites if getattr(m, 'id', None) == mob_id), None)
-                    if mob:
-                        mob.take_damage(msg.get("amount", 20))
+                    self._respawn()
+                elif msg.get("action") == "request_map_change":
+                    req_flag = msg.get("req_flag", "none")
+                    if req_flag == "boss": self.coming_from_boss = True
+                    elif req_flag == "glace": self.coming_from_glace = True
+                    elif req_flag == "lave": self.coming_from_lave = True
+                    elif req_flag == "tp_glace": self.coming_from_teleport = True
+                    elif req_flag == "tp_lave": self.coming_from_teleport_lave = True
+                    self.load_map(msg.get("dest"))
 
         # ── CLIENT : envoie son état (P2), reçoit l'état du host (P1) ──────
         elif self.network.role == "client":
             self.net_timer += dt
-            if self.net_timer >= 1 / 120:
+            if self.net_timer >= 1 / 60:
                 self.net_timer = 0
                 state = {
                     "p2_x":  self.player.rect.x,
                     "p2_y":  self.player.rect.y,
                     "p2_hp": self.player.hp_current,
                     "p2_status": self.player.status,
-                    "projs": [{"x": p.rect.x, "y": p.rect.y} for p in self.player.capacite.projectiles]
+                    "projs": [{"x": p.rect.x, "y": p.rect.y} for p in self.player.capacite.projectiles],
+                    "damage_events": self.pending_damage_events
                 }
                 self.network.send_client_state(state)
+                self.pending_damage_events = []
 
             for msg in self.network.poll():
                 self.last_msg_time = pygame.time.get_ticks()
                 if msg.get("action") == "game_state":
+                    if msg.get("boss_glace_dead"):
+                        self.boss_glace_dead = True
+                    if msg.get("boss_lave_dead"):
+                        self.boss_lave_dead = True
+                    remote_map = msg.get("map_name")
+                    remote_flag = msg.get("map_flag", "")
+                    if remote_map and getattr(self, 'current_map_name', "") != remote_map:
+                        if remote_flag == "boss": self.coming_from_boss = True
+                        elif remote_flag == "glace": self.coming_from_glace = True
+                        elif remote_flag == "lave": self.coming_from_lave = True
+                        elif remote_flag == "tp_glace": self.coming_from_teleport = True
+                        elif remote_flag == "tp_lave": self.coming_from_teleport_lave = True
+                        self.load_map(remote_map)
+
                     # Le joueur distant pour le client = p1 dans l'état host
                     if self.remote_player:
                         self.remote_player.rect.x     = msg.get("p1_x", self.remote_player.rect.x)
@@ -892,6 +968,9 @@ class Game:
 
                     self.remote_projs = msg.get("projs", [])
                     self.remote_enemy_projs = msg.get("enemy_projs", [])
+                    self.remote_boss_projs = msg.get("boss_projs", [])
+                    self.remote_boss_shockwaves = msg.get("boss_shockwaves", [])
+                    self.remote_boss_hazards = msg.get("boss_hazards", [])
 
                     mobs_state = msg.get("mobs", [])
                     received_ids = {m["id"] for m in mobs_state}
@@ -909,11 +988,20 @@ class Game:
                             
                             mob.rect.x = m_state["x"]
                             mob.rect.y = m_state["y"]
-                            mob.hp_current = m_state["hp"]
+                            if hasattr(mob, 'hp_current'):
+                                mob.hp_current = m_state["hp"]
+                            elif hasattr(mob, 'hp'):
+                                mob.hp = m_state["hp"]
                     for m in list(self.monster_sprites):
                         if getattr(m, 'id', None) not in received_ids:
-                            m.dead = True
-                            m.hp_current = 0
+                            if hasattr(m, 'hp_current'):
+                                m.hp_current = 0
+                            elif hasattr(m, 'hp'):
+                                m.hp = 0
+                            if hasattr(m, 'dead'): m.dead = True
+                            if hasattr(m, 'alive'): m.alive = False
+                elif msg.get("action") == "respawn_team":
+                    self._respawn()
 
     # ── Spawn mobs ────────────────────────────────────────────────
 
@@ -971,42 +1059,41 @@ class Game:
         if self.save_indicator_timer > 0:
             self.save_indicator_timer -= 1
 
+        if self.is_multi and self.network:
+            # Initialise le timer de message si pas encore fait
+            if getattr(self, 'last_msg_time', 0) == 0:
+                self.last_msg_time = pygame.time.get_ticks()
+            
+            # Déconnexion par timeout (15 secondes sans message, compense les temps de chargement)
+            if pygame.time.get_ticks() - self.last_msg_time > 15000:
+                self.network.connected = False
+
+            if not self.network.connected:
+                print("Déconnexion détectée, retour au menu...")
+                self.is_multi = False
+                self.game_started = False
+                self.is_paused = True
+                self.menu.state = "main"
+                self.network = None
+                self.last_msg_time = 0
+                
+                # Reset local player to player 1 assets
+                if self.player:
+                    self.player.player_num = 1
+                    self.player.load_assets()
+                return
+
+            # Réseau - doit toujours tourner pour éviter le timeout
+            self._network_update(dt)
+
         if not self.is_paused:
+            if getattr(self, 'game_started', False) and not self.boss_glace_dead and self.player.hp_current > 0:
+                self.play_time += dt * 1000.0
+
             if self.game_started and self.current_save_slot:
                 if pygame.time.get_ticks() - self.last_save_time >= 120000:
                     self.save_game()
                     self.last_save_time = pygame.time.get_ticks()
-
-            if self.is_multi and self.network:
-                # Initialise le timer de message si pas encore fait
-                if getattr(self, 'last_msg_time', 0) == 0:
-                    self.last_msg_time = pygame.time.get_ticks()
-                
-                # Déconnexion par timeout (3 secondes sans message)
-                if pygame.time.get_ticks() - self.last_msg_time > 3000:
-                    self.network.connected = False
-
-                if not self.network.connected:
-                    print("Déconnexion détectée, retour au menu...")
-                    self.is_multi = False
-                    self.game_started = False
-                    self.is_paused = True
-                    self.menu.state = "main"
-                    self.network = None
-                    self.last_msg_time = 0
-                    
-                    # Reset local player to player 1 assets
-                    if self.player:
-                        self.player.player_num = 1
-                        self.player.load_assets()
-                    return
-
-            # Réseau
-            if self.is_multi:
-                self._network_update(dt)
-                if self.remote_player:
-                    self.remote_player.update(dt)
-
             # Joueur local (le client ne contrôle son perso que si rôle client,
             # le host contrôle le sien normalement)
             if self.player.hp_current > 0:
@@ -1014,9 +1101,15 @@ class Game:
                 # visuellement (la position sera écrasée par l'état réseau)
                 self.player.update(self.obstacle_sprites, self.ladder_sprites, dt)
                 
+            if self.is_multi and getattr(self, 'remote_player', None):
+                self.remote_player.update(dt)
+                
                 # Check transition to Zone1
                 if pygame.sprite.spritecollideany(self.player, self.transition_sprites):
-                    self.load_map('assets/maps/Zone1.tmx')
+                    if self.is_multi and self.network and self.network.role == "client":
+                        self.network._send({"action": "request_map_change", "dest": 'assets/maps/Zone1.tmx'})
+                    else:
+                        self.load_map('assets/maps/Zone1.tmx')
 
             # NPC
             for npc in self.npc_sprites:
@@ -1038,10 +1131,17 @@ class Game:
             # Monstres
             for m in list(self.monster_sprites):
                 if not self.is_multi or self.network.role == "host":
+                    target_player = self.player
+                    if self.is_multi and getattr(self, 'remote_player', None) and self.remote_player.hp_current > 0:
+                        dist_local = pygame.math.Vector2(m.rect.center).distance_to(self.player.rect.center)
+                        dist_remote = pygame.math.Vector2(m.rect.center).distance_to(self.remote_player.rect.center)
+                        if dist_remote < dist_local:
+                            target_player = self.remote_player
+
                     if hasattr(m, 'attack_state'):
-                        m.update(self.player.rect, dt)
+                        m.update(target_player.rect, dt)
                     else:
-                        m.update(self.player, self.obstacle_sprites)
+                        m.update(target_player, self.obstacle_sprites)
                 else:
                     if getattr(m, 'contact_timer', 0) > 0:
                         m.contact_timer -= 1
@@ -1091,6 +1191,24 @@ class Game:
                     if hasattr(m, 'attack_state') and mob_type == 'Glacius':
                         self.boss_glace_dead = True
                         self.boss_death_pos = (m.rect.centerx, m.rect.bottom - 64)
+                        
+                        # Handle best time
+                        filepath = os.path.join(ROOT_DIR, "best_time.json")
+                        old_best = None
+                        if os.path.exists(filepath):
+                            try:
+                                with open(filepath, "r") as f:
+                                    old_best = json.load(f).get("best_time")
+                            except:
+                                pass
+                        if old_best is None or self.play_time < old_best:
+                            try:
+                                with open(filepath, "w") as f:
+                                    json.dump({"best_time": self.play_time}, f)
+                                self.menu.load_best_time()
+                            except:
+                                pass
+                        
                         msg = "Bravo, tu as vaincu le boss !|Je te téléporte à la porte suivante."
                         npc = NPC(self.boss_death_pos, msg, [self.visibles_sprites, self.npc_sprites], on_end_callback=self.teleport_from_boss)
                     elif hasattr(m, 'attack_state') and mob_type == 'Pyros':
@@ -1114,7 +1232,7 @@ class Game:
                             m.take_damage(20)
                         elif self.network.role == "client":
                             if self.network:
-                                self.network._send({"action": "damage_mob", "mob_id": getattr(m, 'id', -1), "amount": 20})
+                                self.pending_damage_events.append({"mob_id": getattr(m, 'id', -1), "amount": 20})
                         break
 
             # Mise à jour des projectiles ennemis
@@ -1129,6 +1247,28 @@ class Game:
                         self.killed_by_boss = True
                     else:
                         self.killed_by_boss = False
+            
+            if self.is_multi and self.network.role == "client":
+                for proj in getattr(self, "remote_enemy_projs", []):
+                    r = pygame.Rect(proj["x"], proj["y"], 16, 16)
+                    if self.player.hitbox.colliderect(r) and self.player.hp_current > 0:
+                        self.player.take_damage(10)
+                        self.killed_by_boss = False
+                for bp in getattr(self, "remote_boss_projs", []):
+                    r = pygame.Rect(bp["x"], bp["y"], 16, 16)
+                    if self.player.hitbox.colliderect(r) and self.player.hp_current > 0:
+                        self.player.take_damage(15)
+                        self.killed_by_boss = True
+                for sw in getattr(self, "remote_boss_shockwaves", []):
+                    r = pygame.Rect(sw["x"], sw["y"], sw.get("w", 32), sw.get("h", 32))
+                    if self.player.hitbox.colliderect(r) and self.player.hp_current > 0:
+                        self.player.take_damage(20)
+                        self.killed_by_boss = True
+                for hz in getattr(self, "remote_boss_hazards", []):
+                    r = pygame.Rect(hz["x"], hz["y"], hz.get("w", 32), hz.get("h", 32))
+                    if self.player.hitbox.colliderect(r) and self.player.hp_current > 0:
+                        self.player.take_damage(1)
+                        self.killed_by_boss = True
 
             # VFX + particules
             self.vfx_sprites.update()
@@ -1231,6 +1371,18 @@ class Game:
                     r = pygame.Rect(proj["x"], proj["y"], 16, 16)
                     r = self.camera.apply(r)
                     pygame.draw.ellipse(self.screen, (255, 50, 0), r)
+                for bp in getattr(self, "remote_boss_projs", []):
+                    r = pygame.Rect(bp["x"], bp["y"], 16, 16)
+                    r = self.camera.apply(r)
+                    pygame.draw.ellipse(self.screen, (0, 255, 255), r)
+                for sw in getattr(self, "remote_boss_shockwaves", []):
+                    r = pygame.Rect(sw["x"], sw["y"], sw.get("w", 32), sw.get("h", 32))
+                    r = self.camera.apply(r)
+                    pygame.draw.rect(self.screen, (200, 200, 255), r, 3)
+                for hz in getattr(self, "remote_boss_hazards", []):
+                    r = pygame.Rect(hz["x"], hz["y"], hz.get("w", 32), hz.get("h", 32))
+                    r = self.camera.apply(r)
+                    pygame.draw.rect(self.screen, (255, 100, 0), r, 2)
 
             self.dialogue_box.draw()
             self.draw_health_bar()
@@ -1242,6 +1394,10 @@ class Game:
             score_txt = self.font_hud.render(
                 f"Score : {self.score}   Kills : {self.kill_count}", True, WHITE)
             self.screen.blit(score_txt, (SCREEN_WIDTH - score_txt.get_width() - 20, 20))
+
+            if getattr(self, 'game_started', False):
+                timer_txt = self.font_hud.render(format_time(self.play_time), True, YELLOW)
+                self.screen.blit(timer_txt, (SCREEN_WIDTH // 2 - timer_txt.get_width() // 2, 20))
 
             if self.player.hp_current <= 0:
                 if self.death_time is None:
@@ -1285,11 +1441,11 @@ class Game:
 
             if self.save_indicator_timer > 0:
                 text = self.save_font.render("Sauvegarde automatique...", True, WHITE)
-                self.screen.blit(text, (SCREEN_WIDTH - text.get_width() - 50, 20))
+                self.screen.blit(text, (SCREEN_WIDTH - text.get_width() - 50, 50))
                 
                 t = pygame.time.get_ticks() / 200.0
                 cx_wheel = SCREEN_WIDTH - 25
-                cy_wheel = 30
+                cy_wheel = 60
                 radius = 10
                 rect = pygame.Rect(cx_wheel - radius, cy_wheel - radius, radius * 2, radius * 2)
                 start_angle = t
@@ -1361,7 +1517,15 @@ class Game:
                                     self.coming_from_glace = True
                                 elif 'lave' in self.current_map_name.lower():
                                     self.coming_from_lave = True
-                                self.load_map(door['dest'])
+                                
+                                if self.is_multi and self.network and self.network.role == "client":
+                                    req_flag = "none"
+                                    if getattr(self, 'coming_from_boss', False): req_flag = "boss"
+                                    elif getattr(self, 'coming_from_glace', False): req_flag = "glace"
+                                    elif getattr(self, 'coming_from_lave', False): req_flag = "lave"
+                                    self.network._send({"action": "request_map_change", "dest": door['dest'], "req_flag": req_flag})
+                                else:
+                                    self.load_map(door['dest'])
                                 break
 
                 # ── Boutons Game Over ───────────────────────────────
@@ -1373,6 +1537,8 @@ class Game:
                         and event.button == 1):
                     if self.btn_respawn.collidepoint(event.pos):
                         self._respawn()
+                        if self.is_multi and self.network:
+                            self.network._send({"action": "respawn_team"})
                     elif self.btn_gameover_menu.collidepoint(event.pos):
                         self._go_to_main_menu()
 
