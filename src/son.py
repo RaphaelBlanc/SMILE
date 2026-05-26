@@ -19,6 +19,10 @@ class SoundManager:
         self.load_sound("chien_detect", os.path.join(ROOT_DIR, "assets/audio/chien_detect.mp3"), volume=0.2)
         self.load_sound("chien_attack", os.path.join(ROOT_DIR, "assets/audio/chien_attack.mp3"), volume=0.1)
         self.load_sound("chien_death",  os.path.join(ROOT_DIR, "assets/audio/chien_death.mp3"),  volume=0.6)
+        self.load_sound("gobelin_detect", os.path.join(ROOT_DIR, "assets/audio/gobelin_detect.mp3"), volume=0.2)
+        self.load_sound("gobelin_attack", os.path.join(ROOT_DIR, "assets/audio/gobelin_attack.mp3"), volume=0.05)
+        self.load_sound("gobelin_death",  os.path.join(ROOT_DIR, "assets/audio/gobelin_death.mp3"),  volume=0.2)
+        self.load_sound("gobelin_archer_attack", os.path.join(ROOT_DIR, "assets/audio/gobelin_archer_attack.mp3"), volume = 0.2)
 
         self.music_intro_path = os.path.join(ROOT_DIR, "assets/audio/smile_fire_intro.mp3")
         self.music_boucle_path = os.path.join(ROOT_DIR, "assets/audio/smile_fire_boucle.mp3")

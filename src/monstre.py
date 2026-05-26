@@ -477,7 +477,10 @@ class GoblinMelee(BaseEnemy):
             self.stun_timer -= 1; self.state = self.ST_STUN; return
 
         if self.state in (self.ST_WANDER, self.ST_RETURN):
-            if dist < self.DETECT_RANGE: self.state = self.ST_CHASE
+            if dist < self.DETECT_RANGE: 
+                self.state = self.ST_CHASE
+                if getattr(self, 'sound_manager', None):
+                    self.sound_manager.play("gobelin_detect")
         elif self.state == self.ST_CHASE:
             if dist <= self.ATTACK_RANGE: self.state = self.ST_ATTACK
             elif dist > self.LOSE_RANGE:  self.state = self.ST_RETURN
@@ -497,12 +500,18 @@ class GoblinMelee(BaseEnemy):
                 player.take_damage(self.ATTACK_DAMAGE)
                 self.attack_timer  = self.ATTACK_CD
                 self.contact_timer = self.CONTACT_COOLDOWN
+                if getattr(self, 'sound_manager', None):
+                    self.sound_manager.play("gobelin_attack")
 
     def take_damage(self, amount):
         super().take_damage(amount)
         if not self.dead:
             self.stun_timer = self.STUN_DURATION
             self.state      = self.ST_STUN
+
+    def on_death(self):
+        if getattr(self, 'sound_manager', None):
+            self.sound_manager.play("gobelin_death")
 
 # ================================================================
 #  2b. GOBELIN ARCHER
@@ -586,7 +595,10 @@ class GoblinArcher(BaseEnemy):
         if self.shoot_timer > 0: self.shoot_timer -= 1
 
         if self.state in (self.ST_WANDER, self.ST_RETURN):
-            if dist < self.DETECT_RANGE: self.state = self.ST_POSITION
+            if dist < self.DETECT_RANGE: 
+                self.state = self.ST_POSITION
+                if getattr(self, 'sound_manager', None):
+                    self.sound_manager.play("gobelin_detect")
         elif self.state == self.ST_POSITION:
             if dist > self.LOSE_RANGE: self.state = self.ST_RETURN
             elif dist < self.RETREAT_DIST: self.state = self.ST_RETREAT
@@ -615,12 +627,18 @@ class GoblinArcher(BaseEnemy):
             if self.shoot_timer == 0:
                 Arrow(self.rect.center, d, [self.arrows] + list(self.arrow_groups))
                 self.shoot_timer = self.SHOOT_CD
+                if getattr(self, 'sound_manager', None):
+                    self.sound_manager.play("gobelin_archer_attack")
 
         if dist < 40 and self.contact_timer == 0:
             player.take_damage(8)
             self.contact_timer = self.CONTACT_COOLDOWN
 
         self.arrows.update(obstacles)
+
+    def on_death(self):
+        if getattr(self, 'sound_manager', None):
+            self.sound_manager.play("gobelin_death")
 
 # ================================================================
 #  ESPRITS ÉLÉMENTAIRES
