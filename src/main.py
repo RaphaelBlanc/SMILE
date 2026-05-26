@@ -1233,6 +1233,12 @@ class Game:
                         else:
                             self.menu.state = "mode_selection"
 
+                    elif action == "respawn":
+                        if self.game_started and self.current_save_slot:
+                            print(f"Rechargement de la dernière sauvegarde (Slot {self.current_save_slot}) !")
+                            self.load_game(self.current_save_slot)
+                            self.is_paused = False
+
                     elif isinstance(action, tuple) and action[0] == "play_story":
                         slot = action[1]
                         print(f"Mode Histoire lancé (Slot {slot}) !")

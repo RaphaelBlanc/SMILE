@@ -73,6 +73,7 @@ class Menu:
 
         # ── Boutons menu principal ──────────────────────────────────
         self.btn_play     = self._btn(center_x, SCREEN_HEIGHT // 2 - 80,  400, 80)
+        self.btn_respawn  = self._btn(center_x, -1000, 400, 80)
         self.btn_settings = self._btn(center_x, SCREEN_HEIGHT // 2 + 40,  400, 80)
         self.btn_quit     = self._btn(center_x, SCREEN_HEIGHT // 2 + 160, 400, 80)
 
@@ -306,8 +307,17 @@ class Menu:
         if self.state == "main":
             if game_started:
                 self.draw_text("PAUSE", self.titre_font, RED, cx, 320)
-                btn_text = "REPRENDRE"
-                btn_quit_text = "MENU PRINCIPAL"
+                
+                # Layout pour 4 boutons en pause
+                self.btn_play.centery     = SCREEN_HEIGHT // 2 - 40
+                self.btn_respawn.centery  = SCREEN_HEIGHT // 2 + 60
+                self.btn_settings.centery = SCREEN_HEIGHT // 2 + 160
+                self.btn_quit.centery     = SCREEN_HEIGHT // 2 + 260
+                
+                self.draw_button(self.btn_play,     "REPRENDRE",  BLUE_MENU, BLUE_HOVER, mouse_pos)
+                self.draw_button(self.btn_respawn,  "REAPPARAITRE", BLUE_MENU, BLUE_HOVER, mouse_pos)
+                self.draw_button(self.btn_settings, "PARAMETRES", BLUE_MENU, BLUE_HOVER, mouse_pos)
+                self.draw_button(self.btn_quit,     "MENU PRINCIPAL", BLUE_MENU, (200, 0, 0), mouse_pos)
             else:
                 if hasattr(self, 'title_logo') and self.title_logo:
                     logo_rect = self.title_logo.get_rect(center=(cx, 200))
@@ -318,11 +328,16 @@ class Menu:
                     self.screen.blit(self.title_logo, logo_rect)
                 else:
                     self.draw_rainbow_bouncy_text("SMILE", self.smile_font, cx, 200)
-                btn_text = "JOUER"
-                btn_quit_text = "QUITTER"
-            self.draw_button(self.btn_play,     btn_text,     BLUE_MENU, BLUE_HOVER, mouse_pos)
-            self.draw_button(self.btn_settings, "PARAMETRES", BLUE_MENU, BLUE_HOVER, mouse_pos)
-            self.draw_button(self.btn_quit,     btn_quit_text,    BLUE_MENU, (200, 0, 0), mouse_pos)
+                    
+                # Layout pour 3 boutons au menu
+                self.btn_play.centery     = SCREEN_HEIGHT // 2 - 80
+                self.btn_respawn.centery  = -1000
+                self.btn_settings.centery = SCREEN_HEIGHT // 2 + 40
+                self.btn_quit.centery     = SCREEN_HEIGHT // 2 + 160
+                
+                self.draw_button(self.btn_play,     "JOUER",      BLUE_MENU, BLUE_HOVER, mouse_pos)
+                self.draw_button(self.btn_settings, "PARAMETRES", BLUE_MENU, BLUE_HOVER, mouse_pos)
+                self.draw_button(self.btn_quit,     "QUITTER",    BLUE_MENU, (200, 0, 0), mouse_pos)
 
         # ── Sélection de mode ───────────────────────────────────────
         elif self.state == "mode_selection":
@@ -566,6 +581,7 @@ class Menu:
             # ── main ────────────────────────────────────────────────
             if self.state == "main":
                 if self.btn_play.collidepoint(event.pos):     return "open_modes"
+                if self.btn_respawn.collidepoint(event.pos):  return "respawn"
                 if self.btn_settings.collidepoint(event.pos): self.state = "settings"
                 if self.btn_quit.collidepoint(event.pos):     return "quit"
 

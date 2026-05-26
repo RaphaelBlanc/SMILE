@@ -1,0 +1,43 @@
+{
+    "save_name": "test2",
+    "current_map_name": "assets/maps/ZoneLave.tmx",
+    "player_pos": [
+        3828,
+        1007
+    ],
+    "player_hp": 85,
+    "score": 125,
+    "kill_count": 4,
+    "boss_glace_dead": false,
+    "boss_lave_dead": false,
+    "killed_mobs": [
+        [
+            "assets/maps/ZoneLave.tmx",
+            [
+                3264,
+                512
+            ]
+        ],
+        [
+            "assets/maps/ZoneLave.tmx",
+            [
+                3864,
+                1124
+            ]
+        ],
+        [
+            "assets/maps/ZoneLave.tmx",
+            [
+                3700,
+                1126
+            ]
+        ],
+        [
+            "assets/maps/ZoneLave.tmx",
+            [
+                4048,
+                1128
+            ]
+        ]
+    ]
+}
