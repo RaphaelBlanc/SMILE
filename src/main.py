@@ -18,7 +18,7 @@ from boss import Glacius, Pyros
 from monstre import (
     ChienEnrage, GoblinMelee, GoblinArcher,
     EspritFeu, EspritGlace, EspritFoudre, EspritNature,
-    GolemPierre,
+    GolemPierre, Fox, Deer, GoblinLancier, Gorgon, MechaGolem,
 )
 from config import ROOT_DIR
 import os
@@ -55,17 +55,29 @@ MOB_CLASSES = {
     "GoblinArcher": GoblinArcher, "EspritFeu":    EspritFeu,
     "EspritGlace":  EspritGlace,  "EspritFoudre": EspritFoudre,
     "EspritNature": EspritNature, "GolemPierre":  GolemPierre,
+    "Fox":          Fox,          "Deer":         Deer,
+    "GoblinLancier":GoblinLancier,
+    "Gorgon":       Gorgon,
+    "MechaGolem":   MechaGolem,
 }
 MOB_COLORS = {
     "ChienEnrage": (180,90,30),   "GoblinMelee":  (60,160,60),
     "GoblinArcher":(60,200,100),  "EspritFeu":    (255,100,0),
     "EspritGlace": (80,180,255),  "EspritFoudre": (220,255,0),
     "EspritNature":(30,200,80),   "GolemPierre":  (140,130,120),
+    "Fox":          (240, 120, 30),"Deer":         (150, 110, 80),
+    "GoblinLancier":(40, 160, 200),
+    "Gorgon":       (100, 200, 100),
+    "MechaGolem":   (120, 120, 120),
 }
 MOB_XP = {
     "ChienEnrage":20, "GoblinMelee":30, "GoblinArcher":40,
     "EspritFeu":35,   "EspritGlace":35, "EspritFoudre":45,
     "EspritNature":30,"GolemPierre":100,
+    "Fox":10,         "Deer":15,
+    "GoblinLancier":50,
+    "Gorgon":120,
+    "MechaGolem":150,
 }
 
 #CLASS PARTICLE (Hugo)###############################################################
@@ -777,7 +789,7 @@ class Game:
     def _spawn_mob(self, obj_type, pos):
         groups    = [self.monster_sprites]
         mob_class = MOB_CLASSES[obj_type]
-        if obj_type == "GoblinArcher":
+        if obj_type in ("GoblinArcher", "MechaGolem"):
             mob = mob_class(pos, groups, arrow_groups=[self.enemy_proj_sprites])
         elif obj_type == "GolemPierre":
             mob = mob_class(pos, groups, screen_shake_ref=self.shake_ref)
@@ -959,6 +971,9 @@ class Game:
                             if self.network:
                                 self.network._send({"action": "damage_mob", "mob_id": getattr(m, 'id', -1), "amount": 20})
                         break
+
+            # Mise à jour des projectiles ennemis
+            self.enemy_proj_sprites.update(self.obstacle_sprites)
 
             # Projectiles ennemis → joueur
             for ep in list(self.enemy_proj_sprites):
