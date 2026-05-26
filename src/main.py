@@ -517,6 +517,8 @@ class Game:
                 with open(filename, 'r') as f:
                     data = json.load(f)
                 
+                self.current_save_name = data.get('save_name', None)
+
                 # Restore game state
                 self.score = data.get('score', 0)
                 self.kill_count = data.get('kill_count', 0)
@@ -568,6 +570,7 @@ class Game:
         killed_list = [[m[0], list(m[1])] for m in self.killed_mobs]
         
         data = {
+            'save_name': getattr(self, 'current_save_name', None),
             'current_map_name': self.current_map_name,
             'player_pos': list(self.player.rect.topleft),
             'player_hp': self.player.hp_current,
@@ -1144,8 +1147,11 @@ class Game:
                         
                     elif isinstance(action, tuple) and action[0] == "new_game":
                         slot = action[1]
+                        save_name = action[2] if len(action) > 2 else None
                         print(f"Nouvelle partie lancée (Slot {slot}) !")
                         self.load_game(slot)
+                        if save_name:
+                            self.current_save_name = save_name
                         self.save_game()
                         
                     elif isinstance(action, tuple) and action[0] == "delete_save":

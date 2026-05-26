@@ -113,6 +113,7 @@ class Menu:
         # "volume" ou "keybinds"
         self.settings_tab = "volume"
         tab_y = 340
+        self.btn_create_save = self._btn(center_x, 480, 300, 60)
         self.btn_tab_volume   = self._btn(center_x - 160, tab_y, 280, 55)
         self.btn_tab_keybinds = self._btn(center_x + 160, tab_y, 280, 55)
 
@@ -177,11 +178,23 @@ class Menu:
             y = y_offset + i * 100
             btn = self._btn(center_x, y, 400, 80)
             del_btn = self._btn(center_x + 240, y, 40, 40)
+            
+            label = f"SAUVEGARDE {slot}"
+            filename = f"save_{slot}.json"
+            if os.path.exists(filename):
+                try:
+                    with open(filename, 'r') as f:
+                        data = json.load(f)
+                        if 'save_name' in data and data['save_name']:
+                            label = data['save_name']
+                except:
+                    pass
+
             self.saves.append({
                 'slot': slot,
                 'btn': btn,
                 'del': del_btn,
-                'label': f"SAUVEGARDE {slot}"
+                'label': label
             })
 
     def update_video(self):
@@ -308,6 +321,21 @@ class Menu:
             
             self.draw_button(self.btn_new_game, "NOUVELLE PARTIE", GREEN, (50, 255, 50), mouse_pos)
             self.draw_button(self.btn_back_save, "RETOUR", GREY, WHITE, mouse_pos)
+
+        # ── Saisie nom nouvelle sauvegarde ──────────────────────────
+        elif self.state == "new_save_input":
+            self.draw_text("NOM DE LA SAUVEGARDE", self.titre_font, YELLOW, cx, 220)
+            
+            # Zone de saisie
+            input_rect = pygame.Rect(0, 0, 400, 60)
+            input_rect.center = (cx, 380)
+            color = BLUE_HOVER if self.input_active else BLUE_MENU
+            pygame.draw.rect(self.screen, (20, 20, 60), input_rect, border_radius=10)
+            pygame.draw.rect(self.screen, color, input_rect, 3, border_radius=10)
+            self.draw_text(self.input_code, self.button_font, WHITE, cx, 380)
+
+            self.draw_button(self.btn_create_save, "CRÉER", GREEN, (50, 255, 50), mouse_pos)
+            self.draw_button(self.btn_back_lobby, "ANNULER", GREY, WHITE, mouse_pos)
 
         # ── Confirmation de suppression ─────────────────────────────
         elif self.state == "delete_save_confirm":
@@ -461,14 +489,16 @@ class Menu:
         """
         mouse_pos = pygame.mouse.get_pos()
 
-        # Saisie clavier pour le code (état multi_join_input)
-        if self.state == "multi_join_input" and event.type == pygame.KEYDOWN:
+        # Saisie clavier pour le code/nom (état multi_join_input ou new_save_input)
+        if (self.state == "multi_join_input" or self.state == "new_save_input") and event.type == pygame.KEYDOWN:
             if event.key == pygame.K_RETURN:
-                return self._try_join(network)
+                if self.state == "multi_join_input": return self._try_join(network)
+                elif self.state == "new_save_input" and self.input_code.strip() != "":
+                    return ("new_game", self.next_save_slot, self.input_code.strip())
             elif event.key == pygame.K_BACKSPACE:
                 self.input_code = self.input_code[:-1]
-            elif event.unicode.isalnum() and len(self.input_code) < 8:
-                self.input_code += event.unicode.upper()
+            elif len(self.input_code) < 16 and (event.unicode.isalnum() or event.unicode == ' '):
+                self.input_code += event.unicode
             return None
 
         # ── Slider volume : clic + drag ─────────────────────────────
@@ -505,6 +535,10 @@ class Menu:
             # Activer/désactiver la zone de saisie
             if self.state == "multi_join_input":
                 self.input_active = self.input_rect.collidepoint(event.pos)
+            elif self.state == "new_save_input":
+                input_rect = pygame.Rect(0, 0, 400, 60)
+                input_rect.center = (SCREEN_WIDTH // 2, 380)
+                self.input_active = input_rect.collidepoint(event.pos)
 
             # ── main ────────────────────────────────────────────────
             if self.state == "main":
@@ -525,20 +559,31 @@ class Menu:
                 if self.btn_new_game.collidepoint(event.pos):
                     next_slot = 1
                     if self.saves:
-                        next_slot = max(s['slot'] for s in self.saves) + 1
-                    return ("new_game", next_slot)
-                
+                        next_slot = max(s["slot"] for s in self.saves) + 1
+                    self.next_save_slot = next_slot
+                    self.input_code = "Ma Sauvegarde"
+                    self.input_active = True
+                    self.state = "new_save_input"
+                    return None
+
                 for s in self.saves:
-                    if s['btn'].collidepoint(event.pos):
-                        return ("play_story", s['slot'])
-                    if s['del'].collidepoint(event.pos):
-                        self.save_to_delete = s['slot']
+                    if s["btn"].collidepoint(event.pos):
+                        return ("play_story", s["slot"])
+                    if s["del"].collidepoint(event.pos):
+                        self.save_to_delete = s["slot"]
                         self.state = "delete_save_confirm"
                         return None
 
-                if self.btn_back_save.collidepoint(event.pos): self.state = "mode_selection"
+                if hasattr(self, "btn_back_save") and self.btn_back_save.collidepoint(event.pos): self.state = "mode_selection"
 
-            # ── delete_save_confirm ─────────────────────────────────
+            # ── new_save_input ──────────────────────────────────────
+            elif self.state == "new_save_input":
+                input_rect = pygame.Rect(0, 0, 400, 60)
+                input_rect.center = (SCREEN_WIDTH // 2, 380)
+                if hasattr(self, "btn_create_save") and self.btn_create_save.collidepoint(event.pos) and self.input_code.strip() != "":
+                    return ("new_game", self.next_save_slot, self.input_code.strip())
+                if hasattr(self, "btn_back_lobby") and self.btn_back_lobby.collidepoint(event.pos):
+                    self.state = "save_selection"
             elif self.state == "delete_save_confirm":
                 if self.btn_confirm_del_yes.collidepoint(event.pos):
                     action = ("delete_save", self.save_to_delete)
