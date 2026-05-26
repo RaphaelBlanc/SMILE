@@ -724,14 +724,30 @@ class Game:
             if self.net_timer >= 1 / 120:          # 120 fois/seconde (très fluide)
                 self.net_timer = 0
                 state = {
+                    "map_name": getattr(self, "current_map_name", ""),
+                    "boss_glace_dead": getattr(self, "boss_glace_dead", False),
+                    "boss_lave_dead": getattr(self, "boss_lave_dead", False),
                     "p1_x":  self.player.rect.x,
                     "p1_y":  self.player.rect.y,
                     "p1_hp": self.player.hp_current,
                 }
                 mobs_state = []
+                boss_projs = []
+                boss_shockwaves = []
+                boss_hazards = []
                 for m in self.monster_sprites:
                     mobs_state.append({"id": getattr(m, 'id', -1), "x": m.rect.x, "y": m.rect.y, "hp": m.hp_current})
+                    if hasattr(m, 'attack_state'):
+                        for p in getattr(m, 'projectiles', []):
+                            boss_projs.append({"x": p.rect.x, "y": p.rect.y})
+                        for sw in getattr(m, 'shockwaves', []):
+                            boss_shockwaves.append({"x": sw.rect.x, "y": sw.rect.y, "w": sw.rect.width, "h": sw.rect.height})
+                        for hz in getattr(m, 'hazards', []):
+                            boss_hazards.append({"x": hz.rect.x, "y": hz.rect.y, "w": hz.rect.width, "h": hz.rect.height})
                 state["mobs"] = mobs_state
+                state["boss_projs"] = boss_projs
+                state["boss_shockwaves"] = boss_shockwaves
+                state["boss_hazards"] = boss_hazards
                 state["projs"] = [{"x": p.rect.x, "y": p.rect.y} for p in self.player.capacite.projectiles]
                 state["enemy_projs"] = [{"x": p.rect.x, "y": p.rect.y} for p in self.enemy_proj_sprites]
                 self.network.send_game_state(state)
@@ -749,6 +765,10 @@ class Game:
                     mob = next((m for m in self.monster_sprites if getattr(m, 'id', None) == mob_id), None)
                     if mob:
                         mob.take_damage(msg.get("amount", 20))
+                elif msg.get("action") == "respawn_team":
+                    self._respawn()
+                elif msg.get("action") == "request_map_change":
+                    self.load_map(msg.get("dest"))
 
         # ── CLIENT : envoie son état (P2), reçoit l'état du host (P1) ──────
         elif self.network.role == "client":
@@ -766,6 +786,14 @@ class Game:
             for msg in self.network.poll():
                 self.last_msg_time = pygame.time.get_ticks()
                 if msg.get("action") == "game_state":
+                    if msg.get("boss_glace_dead"):
+                        self.boss_glace_dead = True
+                    if msg.get("boss_lave_dead"):
+                        self.boss_lave_dead = True
+                    remote_map = msg.get("map_name")
+                    if remote_map and remote_map != getattr(self, "current_map_name", ""):
+                        self.load_map(remote_map)
+
                     # Le joueur distant pour le client = p1 dans l'état host
                     if self.remote_player:
                         self.remote_player.rect.x     = msg.get("p1_x", self.remote_player.rect.x)
@@ -774,6 +802,9 @@ class Game:
 
                     self.remote_projs = msg.get("projs", [])
                     self.remote_enemy_projs = msg.get("enemy_projs", [])
+                    self.remote_boss_projs = msg.get("boss_projs", [])
+                    self.remote_boss_shockwaves = msg.get("boss_shockwaves", [])
+                    self.remote_boss_hazards = msg.get("boss_hazards", [])
 
                     mobs_state = msg.get("mobs", [])
                     received_ids = {m["id"] for m in mobs_state}
@@ -787,6 +818,8 @@ class Game:
                         if getattr(m, 'id', None) not in received_ids:
                             m.dead = True
                             m.hp_current = 0
+                elif msg.get("action") == "respawn_team":
+                    self._respawn()
 
     # ── Spawn mobs ────────────────────────────────────────────────
 
@@ -872,7 +905,10 @@ class Game:
                 
                 # Check transition to Zone1
                 if pygame.sprite.spritecollideany(self.player, self.transition_sprites):
-                    self.load_map('assets/maps/Zone1.tmx')
+                    if self.is_multi and self.network and self.network.role == "client":
+                        self.network._send({"action": "request_map_change", "dest": 'assets/maps/Zone1.tmx'})
+                    else:
+                        self.load_map('assets/maps/Zone1.tmx')
 
             # NPC
             for npc in self.npc_sprites:
@@ -983,6 +1019,28 @@ class Game:
                         self.killed_by_boss = True
                     else:
                         self.killed_by_boss = False
+            
+            if self.is_multi and self.network.role == "client":
+                for proj in getattr(self, "remote_enemy_projs", []):
+                    r = pygame.Rect(proj["x"], proj["y"], 16, 16)
+                    if self.player.hitbox.colliderect(r) and self.player.hp_current > 0:
+                        self.player.take_damage(10)
+                        self.killed_by_boss = False
+                for bp in getattr(self, "remote_boss_projs", []):
+                    r = pygame.Rect(bp["x"], bp["y"], 16, 16)
+                    if self.player.hitbox.colliderect(r) and self.player.hp_current > 0:
+                        self.player.take_damage(15)
+                        self.killed_by_boss = True
+                for sw in getattr(self, "remote_boss_shockwaves", []):
+                    r = pygame.Rect(sw["x"], sw["y"], sw.get("w", 32), sw.get("h", 32))
+                    if self.player.hitbox.colliderect(r) and self.player.hp_current > 0:
+                        self.player.take_damage(20)
+                        self.killed_by_boss = True
+                for hz in getattr(self, "remote_boss_hazards", []):
+                    r = pygame.Rect(hz["x"], hz["y"], hz.get("w", 32), hz.get("h", 32))
+                    if self.player.hitbox.colliderect(r) and self.player.hp_current > 0:
+                        self.player.take_damage(1)
+                        self.killed_by_boss = True
 
             # VFX + particules
             self.vfx_sprites.update()
@@ -1085,6 +1143,18 @@ class Game:
                     r = pygame.Rect(proj["x"], proj["y"], 16, 16)
                     r = self.camera.apply(r)
                     pygame.draw.ellipse(self.screen, (255, 50, 0), r)
+                for bp in getattr(self, "remote_boss_projs", []):
+                    r = pygame.Rect(bp["x"], bp["y"], 16, 16)
+                    r = self.camera.apply(r)
+                    pygame.draw.ellipse(self.screen, (0, 255, 255), r)
+                for sw in getattr(self, "remote_boss_shockwaves", []):
+                    r = pygame.Rect(sw["x"], sw["y"], sw.get("w", 32), sw.get("h", 32))
+                    r = self.camera.apply(r)
+                    pygame.draw.rect(self.screen, (200, 200, 255), r, 3)
+                for hz in getattr(self, "remote_boss_hazards", []):
+                    r = pygame.Rect(hz["x"], hz["y"], hz.get("w", 32), hz.get("h", 32))
+                    r = self.camera.apply(r)
+                    pygame.draw.rect(self.screen, (255, 100, 0), r, 2)
 
             self.dialogue_box.draw()
             self.draw_health_bar()
@@ -1204,7 +1274,11 @@ class Game:
                                     self.coming_from_glace = True
                                 elif 'lave' in self.current_map_name.lower():
                                     self.coming_from_lave = True
-                                self.load_map(door['dest'])
+                                
+                                if self.is_multi and self.network and self.network.role == "client":
+                                    self.network._send({"action": "request_map_change", "dest": door['dest']})
+                                else:
+                                    self.load_map(door['dest'])
                                 break
 
                 # ── Boutons Game Over ───────────────────────────────
@@ -1216,6 +1290,8 @@ class Game:
                         and event.button == 1):
                     if self.btn_respawn.collidepoint(event.pos):
                         self._respawn()
+                        if self.is_multi and self.network:
+                            self.network._send({"action": "respawn_team"})
                     elif self.btn_gameover_menu.collidepoint(event.pos):
                         self._go_to_main_menu()
 
