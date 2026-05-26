@@ -473,6 +473,7 @@ class Game:
                         dest = 'assets/maps/map_boss_glace.tmx'
                     elif obj_type_lower == 'porte_to_glace':
                         dest = 'assets/maps/map_glace.tmx'
+                        self.spawn_porte_to_glace_point = pos
                     elif obj_type_lower == 'porteglace':
                         dest = 'assets/maps/ZoneTerre.tmx'
                     elif obj_type_lower in ('porte_to_zone_1', 'porte_to zone_1'):
@@ -528,6 +529,10 @@ class Game:
             tp_pos = (self.spawn_porte_glace_point[0] - 50, self.spawn_porte_glace_point[1])
             self.player.set_position(tp_pos)
             self.respawn_point = tp_pos
+        elif getattr(self, 'coming_from_teleport_lave', False) and getattr(self, 'spawn_porte_to_glace_point', None):
+            tp_pos = (self.spawn_porte_to_glace_point[0] - 50, self.spawn_porte_to_glace_point[1])
+            self.player.set_position(tp_pos)
+            self.respawn_point = tp_pos
         else:
             self.player.set_position(player_spawn)
             self.respawn_point = player_spawn
@@ -537,6 +542,7 @@ class Game:
         self.coming_from_glace = False
         self.coming_from_lave = False
         self.coming_from_teleport = False
+        self.coming_from_teleport_lave = False
         
         # Snap camera to player immediately to avoid panning from (0,0)
         target_x = self.player.rect.centerx - SCREEN_WIDTH // 2
@@ -549,7 +555,7 @@ class Game:
         self.load_map('assets/maps/map_glace.tmx')
 
     def teleport_from_boss_lave(self):
-        self.coming_from_teleport = True
+        self.coming_from_teleport_lave = True
         self.load_map('assets/maps/ZoneLave.tmx')
 
     def load_game(self, slot):
@@ -1161,6 +1167,9 @@ class Game:
                             if self.player.hitbox.colliderect(door['rect'].inflate(64, 64)):
                                 if door['type'] == 'porteglace' and not self.boss_glace_dead:
                                     self.dialogue_box.show("La porte est verrouillée...", owner=None)
+                                    break
+                                elif door['type'] == 'porte_to_glace' and not self.boss_lave_dead:
+                                    self.dialogue_box.show("La porte vers la zone de glace est verrouillée...\nIl faut vaincre le boss de lave.", owner=None)
                                     break
                                 
                                 if 'boss' in self.current_map_name:
