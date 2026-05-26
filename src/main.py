@@ -160,7 +160,6 @@ class IntroVideo:
 
         fps_video = cap.get(cv2.CAP_PROP_FPS) or 30.0
 
-        # Extraire l'audio dans un fichier temporaire et le jouer
         audio_path = None
         try:
             try:
@@ -353,6 +352,11 @@ class Game:
             self.killed_mobs.clear()
             
         self.current_map_name = map_file
+
+        if 'glace' in map_file:
+            self.sound_manager.play_world_music('glace')
+        elif 'map1' in map_file or 'lave' in map_file:
+            self.sound_manager.play_world_music('feu')
         
         for s in self.visibles_sprites:
             if s != self.player and getattr(self, 'remote_player', None) != s:
@@ -1070,6 +1074,14 @@ class Game:
             dt = self.clock.tick(FPS) / 1000.0
 
             for event in pygame.event.get():
+                if event.type == getattr(self.sound_manager, '_loop_event', -1):
+                    try:
+                        pygame.mixer.music.load(self.sound_manager._current_boucle)
+                        pygame.mixer.music.set_volume(self.sound_manager.music_base_volume * self.sound_manager.global_volume)
+                        pygame.mixer.music.play(-1)
+                    except pygame.error:
+                        pass
+
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
