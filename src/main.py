@@ -139,72 +139,126 @@ class Camera:
 #CLASS REMOTE PLAYER (fantôme de l'autre joueur) #####################################
 
 class RemotePlayer(pygame.sprite.Sprite):
-    """Représentation locale du joueur distant — mis à jour par les messages réseau."""
-    def __init__(self, pos):
+    """Représentation locale animée du joueur distant — mis à jour par les messages réseau."""
+    def __init__(self, pos, player_num=2):
         super().__init__()
-        import os
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        root_dir = os.path.dirname(current_dir)
-        
-        path = os.path.join(root_dir, 'assets', 'images', 'player', 'mouvements', 'Slime1_Idle_body.png')
-        self.frames = []
-        try:
-            sheet = pygame.image.load(path).convert_alpha()
-            w, h = sheet.get_width() // 6, sheet.get_height() // 4
-            for c in range(6):
-                rect = pygame.Rect(c * w, 3 * h, w, h)
-                img = pygame.Surface((w, h), pygame.SRCALPHA)
-                img.blit(sheet, (0, 0), rect)
-                img = pygame.transform.scale(img, (225, 225))
-                
-                # Teinter en rouge pour distinguer le joueur 2
-                tint = pygame.Surface((225, 225), pygame.SRCALPHA)
-                tint.fill((255, 60, 60, 100))
-                img.blit(tint, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
-                
-                self.frames.append(img)
-        except Exception as e:
-            print("RemotePlayer load error:", e)
-            img = pygame.Surface((32, 64))
-            img.fill((0, 200, 255))
-            self.frames = [img]
-
-        self.image = self.frames[0]
-        self.rect  = self.image.get_rect(topleft=pos)
+        self.player_num = player_num
         self.hp_current = 100
         self.hp_max     = 100
-        
-        self.anim_idx = 0
-        self.anim_timer = 0
-        self.last_x = self.rect.x
         self.facing_right = True
+        self.is_sprinting = False
+        self.on_ladder = False
+        self.status = "idle_right"
+        
+        self.dx = 0
+        self.dy = 0
+        
+        from animator import Animator
+        self.animations = {}
+        self._load_assets()
+        
+        self.animator = Animator(self.animations, fps=8)
+        self.image = self.animations["idle_right"][0]
+        self.rect  = self.image.get_rect(topleft=pos)
 
-    def update(self, dt):
-        if len(self.frames) > 1:
-            self.anim_timer += dt * 1000
-            if self.anim_timer >= 100:
-                self.anim_timer = 0
-                self.anim_idx = (self.anim_idx + 1) % len(self.frames)
-                
-            base_image = self.frames[self.anim_idx]
-            if self.rect.x > self.last_x:
-                self.facing_right = True
-            elif self.rect.x < self.last_x:
-                self.facing_right = False
-            self.last_x = self.rect.x
+    def _load_assets(self):
+        import os
+        from config import ROOT_DIR
+        actions = [
+            'idle_right', 'idle_left', 'run_right', 'run_left', 
+            'sprint_right', 'sprint_left', 'jump_right', 'jump_left', 
+            'land_right', 'land_left', 'death', 'back', 'front'
+        ]
+        self.animations = {action: [] for action in actions}
+        
+        if self.player_num == 2:
+            base_path = os.path.join(ROOT_DIR, 'assets', 'images', 'player2', 'mouvements')
+            prefix = "Slime2_"
+            death_file = "Slime2_Death.png"
+            fill_color = (0, 200, 255)
+        else:
+            base_path = os.path.join(ROOT_DIR, 'assets', 'images', 'player', 'mouvements')
+            prefix = "Slime1_"
+            death_file = "Slime1_Death_body.png"
+            fill_color = (0, 200, 0)
             
-            if not self.facing_right:
-                self.image = pygame.transform.flip(base_image, True, False)
-            else:
-                self.image = base_image
+        SLIME_SIZE = (225, 225) 
+        ROW_FRONT = 0
+        ROW_BACK  = 1
+        ROW_LEFT  = 2
+        ROW_RIGHT = 3
+
+        def slice_sheet(filename, cols, rows):
+            path = os.path.join(base_path, filename)
+            if not os.path.exists(path):
+                return None
+            try:
+                sheet = pygame.image.load(path).convert_alpha()
+                frame_w = sheet.get_width() // cols
+                frame_h = sheet.get_height() // rows
+                
+                sheet_frames = []
+                for r in range(rows):
+                    row_frames = []
+                    for c in range(cols):
+                        rect = pygame.Rect(c * frame_w, r * frame_h, frame_w, frame_h)
+                        img = pygame.Surface((frame_w, frame_h), pygame.SRCALPHA)
+                        img.blit(sheet, (0, 0), rect)
+                        img = pygame.transform.scale(img, SLIME_SIZE)
+                        row_frames.append(img)
+                    sheet_frames.append(row_frames)
+                return sheet_frames
+            except Exception as e:
+                print(f"Erreur decoupage {filename}: {e}")
+                return None
+
+        # 1. IDLE / MOUVEMENT
+        idle_frames = slice_sheet(f"{prefix}Idle_body.png", cols=6, rows=4)
+        if idle_frames:
+            self.animations['front']      = idle_frames[ROW_FRONT]
+            self.animations['back']       = idle_frames[ROW_BACK]
+            self.animations['idle_left']  = idle_frames[ROW_LEFT]
+            self.animations['idle_right'] = idle_frames[ROW_RIGHT]
+            
+            # Use same sheet for actions for simplicity and size matching
+            self.animations['run_left']     = idle_frames[ROW_LEFT]
+            self.animations['run_right']    = idle_frames[ROW_RIGHT]
+            self.animations['sprint_left']  = idle_frames[ROW_LEFT]
+            self.animations['sprint_right'] = idle_frames[ROW_RIGHT]
+            self.animations['jump_left']    = idle_frames[ROW_LEFT]
+            self.animations['jump_right']   = idle_frames[ROW_RIGHT]
+            self.animations['land_left']    = idle_frames[ROW_LEFT]
+            self.animations['land_right']   = idle_frames[ROW_RIGHT]
+
+        # 2. DECEASED
+        death_frames = slice_sheet(death_file, cols=10, rows=4)
+        if death_frames:
+            self.animations['death'] = death_frames[ROW_FRONT]
+
+        # PLACEHOLDERS
+        for state in self.animations:
+            if not self.animations[state]:
+                placeholder = pygame.Surface(SLIME_SIZE, pygame.SRCALPHA)
+                placeholder.fill(fill_color)
+                self.animations[state].append(placeholder)
 
     def apply_state(self, state: dict):
-        self.rect.x     = state.get("x",  self.rect.x)
-        self.rect.y     = state.get("y",  self.rect.y)
+        new_x = state.get("x", self.rect.x)
+        new_y = state.get("y", self.rect.y)
+        
+        self.dx = new_x - self.rect.x
+        self.dy = new_y - self.rect.y
+        
+        self.rect.x = new_x
+        self.rect.y = new_y
         self.hp_current = state.get("hp", self.hp_current)
 
     def take_damage(self, amount):
         pass  # Les dégâts du joueur distant sont gérés de son côté et synchronisés via le réseau
+
+    def update(self, dt):
+        loop = (self.status != 'death')
+        self.image = self.animator.get_current_frame(dt, self.status, loop=loop)
 
 #CLASS INTRO VIDEO##################################################################
 
@@ -359,6 +413,7 @@ class Game:
         # --- MODE MULTI ---
         self.network       = None          # Network() créé à la demande
         self.is_multi      = False         # True si partie réseau
+        self.show_menu_overlay = False     # True pour afficher l'overlay en multi
         self.remote_player = None          # RemotePlayer (l'autre joueur)
         self.net_timer     = 0             # compteur pour envoi état (host)
         self.pending_damage_events = []
@@ -792,8 +847,17 @@ class Game:
         self.is_multi      = True
         self.game_started  = True
         self.is_paused     = False
-        # Crée le fantôme du joueur distant
-        self.remote_player = RemotePlayer(self.player.rect.topleft)
+        
+        # Configure les numéros de joueur en fonction du rôle
+        if self.network and self.network.role == "client":
+            self.player.player_num = 2
+            self.player.load_assets()
+            self.remote_player = RemotePlayer(self.player.rect.topleft, player_num=1)
+        else:
+            self.player.player_num = 1
+            self.player.load_assets()
+            self.remote_player = RemotePlayer(self.player.rect.topleft, player_num=2)
+
         self.visibles_sprites.add(self.remote_player)
 
     def _network_update(self, dt):
@@ -813,6 +877,7 @@ class Game:
                     "p1_x":  self.player.rect.x,
                     "p1_y":  self.player.rect.y,
                     "p1_hp": self.player.hp_current,
+                    "p1_status": self.player.status,
                 }
                 mobs_state = []
                 boss_projs = []
@@ -843,6 +908,7 @@ class Game:
                         self.remote_player.rect.x     = msg.get("p2_x", self.remote_player.rect.x)
                         self.remote_player.rect.y     = msg.get("p2_y", self.remote_player.rect.y)
                         self.remote_player.hp_current = msg.get("p2_hp", self.remote_player.hp_current)
+                        self.remote_player.status     = msg.get("p2_status", self.remote_player.status)
                     self.remote_projs = msg.get("projs", [])
                     for dmg in msg.get("damage_events", []):
                         mob_id = dmg.get("mob_id")
@@ -869,6 +935,7 @@ class Game:
                     "p2_x":  self.player.rect.x,
                     "p2_y":  self.player.rect.y,
                     "p2_hp": self.player.hp_current,
+                    "p2_status": self.player.status,
                     "projs": [{"x": p.rect.x, "y": p.rect.y} for p in self.player.capacite.projectiles],
                     "damage_events": self.pending_damage_events
                 }
@@ -897,6 +964,7 @@ class Game:
                         self.remote_player.rect.x     = msg.get("p1_x", self.remote_player.rect.x)
                         self.remote_player.rect.y     = msg.get("p1_y", self.remote_player.rect.y)
                         self.remote_player.hp_current = msg.get("p1_hp", self.remote_player.hp_current)
+                        self.remote_player.status     = msg.get("p1_status", self.remote_player.status)
 
                     self.remote_projs = msg.get("projs", [])
                     self.remote_enemy_projs = msg.get("enemy_projs", [])
@@ -909,6 +977,15 @@ class Game:
                     for m_state in mobs_state:
                         mob = next((m for m in self.monster_sprites if getattr(m, 'id', None) == m_state["id"]), None)
                         if mob:
+                            dx = m_state["x"] - mob.rect.x
+                            dy = m_state["y"] - mob.rect.y
+                            mob.vx = dx
+                            mob.vy = dy
+                            if dx > 0.2:
+                                mob.facing_right = True
+                            elif dx < -0.2:
+                                mob.facing_right = False
+                            
                             mob.rect.x = m_state["x"]
                             mob.rect.y = m_state["y"]
                             if hasattr(mob, 'hp_current'):
@@ -967,6 +1044,11 @@ class Game:
         self.game_started = False
         self.menu.state   = "main"
         self.menu_input_blocked = 10   # ignore les clics pendant 10 frames
+        
+        # Reset local player to player 1 assets
+        if self.player:
+            self.player.player_num = 1
+            self.player.load_assets()
 
     # ── Update ────────────────────────────────────────────────────
 
@@ -994,6 +1076,11 @@ class Game:
                 self.menu.state = "main"
                 self.network = None
                 self.last_msg_time = 0
+                
+                # Reset local player to player 1 assets
+                if self.player:
+                    self.player.player_num = 1
+                    self.player.load_assets()
                 return
 
             # Réseau - doit toujours tourner pour éviter le timeout
@@ -1002,6 +1089,11 @@ class Game:
         if not self.is_paused:
             if getattr(self, 'game_started', False) and not self.boss_glace_dead and self.player.hp_current > 0:
                 self.play_time += dt * 1000.0
+
+            if self.game_started and self.current_save_slot:
+                if pygame.time.get_ticks() - self.last_save_time >= 120000:
+                    self.save_game()
+                    self.last_save_time = pygame.time.get_ticks()
             # Joueur local (le client ne contrôle son perso que si rôle client,
             # le host contrôle le sien normalement)
             if self.player.hp_current > 0:
@@ -1053,6 +1145,8 @@ class Game:
                 else:
                     if getattr(m, 'contact_timer', 0) > 0:
                         m.contact_timer -= 1
+                    if hasattr(m, '_update_visual'):
+                        m._update_visual(dt * 1000)
 
                 if hasattr(m, 'heal_allies'):
                     m.heal_allies(self.monster_sprites)
@@ -1358,6 +1452,12 @@ class Game:
                 end_angle = t + math.pi
                 pygame.draw.arc(self.screen, WHITE, rect, start_angle, end_angle, 3)
 
+            if self.is_multi and getattr(self, 'show_menu_overlay', False):
+                overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, 160))
+                self.screen.blit(overlay, (0, 0))
+                self.menu.draw(self.game_started, self.network)
+
         if flip:
             pygame.display.flip()
 
@@ -1382,8 +1482,13 @@ class Game:
 
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     if self.game_started:
-                        self.is_paused = not self.is_paused
-                        self.menu.state = "main"
+                        if self.is_multi:
+                            self.show_menu_overlay = not getattr(self, 'show_menu_overlay', False)
+                            self.menu.state = "main"
+                            self.player.input_locked = self.show_menu_overlay
+                        else:
+                            self.is_paused = not self.is_paused
+                            self.menu.state = "main"
 
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_e:
                     if not self.is_paused and self.player.hp_current > 0:
@@ -1437,16 +1542,24 @@ class Game:
                     elif self.btn_gameover_menu.collidepoint(event.pos):
                         self._go_to_main_menu()
 
-                if self.is_paused and self.menu_input_blocked == 0:
+                if (self.is_paused or (self.is_multi and getattr(self, 'show_menu_overlay', False))) and self.menu_input_blocked == 0:
                     action = self.menu.handle_input(event, self.network)
 
                     # Slider volume — action est un tuple ("volume_changed", valeur)
                     if isinstance(action, tuple) and action[0] == "volume_changed":
                         self.sound_manager.set_volume(action[1])
 
+                    elif isinstance(action, tuple) and action[0] == "keybinds_changed":
+                        if self.player:
+                            self.player.keybinds = action[1]
+
                     elif action == "open_modes":
                         if self.game_started:
-                            self.is_paused = False
+                            if self.is_multi:
+                                self.show_menu_overlay = False
+                                self.player.input_locked = False
+                            else:
+                                self.is_paused = False
                         else:
                             self.menu.state = "mode_selection"
 
@@ -1487,7 +1600,18 @@ class Game:
 
                     elif action == "quit":
                         if self.game_started:
+                            if self.is_multi and self.network:
+                                try:
+                                    import asyncio
+                                    if self.network.ws and self.network.connected:
+                                        asyncio.run_coroutine_threadsafe(self.network.ws.close(), self.network._loop)
+                                except Exception:
+                                    pass
+                                self.network.connected = False
+                                self.network = None
+                                self.is_multi = False
                             self._go_to_main_menu()
+                            self.show_menu_overlay = False
                         else:
                             pygame.quit()
                             sys.exit()

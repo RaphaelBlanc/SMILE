@@ -50,8 +50,8 @@ def _make_surf(w, h, draw_fn, *args):
 
 class BaseEnemy(pygame.sprite.Sprite):
 
-    DETECT_RANGE  = 400
-    LOSE_RANGE    = 600
+    DETECT_RANGE  = 600
+    LOSE_RANGE    = 900
     PATROL_SPEED  = 1
     PATROL_RADIUS = 100
 
@@ -156,8 +156,8 @@ class ChienEnrage(BaseEnemy):
     SLIDE_SPEED   = 9
     SLIDE_DECAY   = 0.15
     TURN_DELAY    = 45
-    DETECT_RANGE  = 500
-    LOSE_RANGE    = 750
+    DETECT_RANGE  = 750
+    LOSE_RANGE    = 1100
     ATTACK_RANGE  = 70  
     ATTACK_DAMAGE = 15
     ATTACK_CD     = 90
@@ -424,8 +424,8 @@ class GoblinMelee(BaseEnemy):
     PATROL_SPEED  = 1
     PATROL_RADIUS = 80
     SPEED         = 3
-    DETECT_RANGE  = 480
-    LOSE_RANGE    = 700
+    DETECT_RANGE  = 720
+    LOSE_RANGE    = 1050
     ATTACK_RANGE  = 38
     ATTACK_DAMAGE = 12
     ATTACK_CD     = 70
@@ -672,8 +672,8 @@ class GoblinArcher(BaseEnemy):
     PATROL_RADIUS  = 80
     PREFERRED_DIST = 250
     RETREAT_DIST   = 180
-    DETECT_RANGE   = 600
-    LOSE_RANGE     = 850
+    DETECT_RANGE   = 900
+    LOSE_RANGE     = 1250
     SHOOT_CD       = 120
     SPEED          = 2
 
@@ -899,8 +899,8 @@ class EspritBase(BaseEnemy):
     PATROL_RADIUS    = 0
     SPEED            = 3
     JUMP_FORCE       = -11
-    DETECT_RANGE     = 550
-    LOSE_RANGE       = 750
+    DETECT_RANGE     = 800
+    LOSE_RANGE       = 1100
     EXPLOSION_RADIUS = 20
 
     COULEUR_CORPS = PURPLE
@@ -1016,8 +1016,8 @@ class EspritBase(BaseEnemy):
 class EspritFeu(EspritBase):
     SPEED            = 4
     JUMP_FORCE       = -12
-    DETECT_RANGE     = 600
-    LOSE_RANGE       = 800
+    DETECT_RANGE     = 900
+    LOSE_RANGE       = 1200
     EXPLOSION_RADIUS = 25
     COULEUR_CORPS    = (220, 60,  0)
     COULEUR_AURA     = (255, 200, 0)
@@ -1040,8 +1040,8 @@ class EspritFeu(EspritBase):
 class EspritGlace(EspritBase):
     SPEED            = 1
     JUMP_FORCE       = -8
-    DETECT_RANGE     = 550
-    LOSE_RANGE       = 750
+    DETECT_RANGE     = 800
+    LOSE_RANGE       = 1100
     EXPLOSION_RADIUS = 30
     COULEUR_CORPS    = BLUE_ICE
     COULEUR_AURA     = CYAN
@@ -1077,8 +1077,8 @@ class EspritGlace(EspritBase):
 class EspritFoudre(EspritBase):
     SPEED            = 5
     JUMP_FORCE       = -14
-    DETECT_RANGE     = 650
-    LOSE_RANGE       = 850
+    DETECT_RANGE     = 970
+    LOSE_RANGE       = 1250
     EXPLOSION_RADIUS = 22
     COULEUR_CORPS    = (180, 180, 0)
     COULEUR_AURA     = ELECTRIC
@@ -1130,8 +1130,8 @@ class EspritFoudre(EspritBase):
 class EspritNature(EspritBase):
     SPEED            = 2
     JUMP_FORCE       = -10
-    DETECT_RANGE     = 550
-    LOSE_RANGE       = 750
+    DETECT_RANGE     = 800
+    LOSE_RANGE       = 1100
     EXPLOSION_RADIUS = 25
     COULEUR_CORPS    = NATURE_GREEN
     COULEUR_AURA     = GREEN_LIGHT
@@ -1193,8 +1193,8 @@ class GolemPierre(BaseEnemy):
     PATROL_SPEED   = 0
     PATROL_RADIUS  = 0
     SPEED          = 1
-    DETECT_RANGE   = 600
-    LOSE_RANGE     = 900
+    DETECT_RANGE   = 900
+    LOSE_RANGE     = 1350
     STOMP_RANGE    = 90
     QUAKE_RANGE    = 350
     STOMP_DAMAGE   = 25
@@ -1335,8 +1335,8 @@ class Deer(BaseEnemy):
     PATROL_SPEED  = 1.5
     PATROL_RADIUS = 100
     FLEE_SPEED    = 4.0
-    DETECT_RANGE  = 250
-    LOSE_RANGE    = 450
+    DETECT_RANGE  = 400
+    LOSE_RANGE    = 700
     ATTACK_DAMAGE = 0
 
     ST_WANDER = "wander"
@@ -1424,7 +1424,7 @@ class Deer(BaseEnemy):
 
         surf = self.animator.get_current_frame(dt, anim_state, loop=loop)
         
-        if not self.facing_right:
+        if self.facing_right:
             surf = pygame.transform.flip(surf, True, False)
             
         frames = self.animator.animations.get(anim_state, [])
@@ -1479,8 +1479,8 @@ class Fox(BaseEnemy):
     PATROL_SPEED  = 2.0
     PATROL_RADIUS = 80
     FLEE_SPEED    = 4.5
-    DETECT_RANGE  = 220
-    LOSE_RANGE    = 400
+    DETECT_RANGE  = 350
+    LOSE_RANGE    = 600
     ATTACK_DAMAGE = 0
 
     ST_WANDER = "wander"
@@ -1568,7 +1568,7 @@ class Fox(BaseEnemy):
 
         surf = self.animator.get_current_frame(dt, anim_state, loop=loop)
         
-        if not self.facing_right:
+        if self.facing_right:
             surf = pygame.transform.flip(surf, True, False)
             
         frames = self.animator.animations.get(anim_state, [])
@@ -1624,8 +1624,8 @@ class GoblinLancier(BaseEnemy):
     PATROL_RADIUS = 80
     SPEED         = 3
     LUNGE_SPEED   = 7.5
-    DETECT_RANGE  = 480
-    LOSE_RANGE    = 700
+    DETECT_RANGE  = 720
+    LOSE_RANGE    = 1050
     ATTACK_RANGE  = 60
     ATTACK_DAMAGE = 14
     LUNGE_DAMAGE  = 20
@@ -1858,8 +1858,8 @@ class Gorgon(BaseEnemy):
     PATROL_SPEED     = 1
     PATROL_RADIUS    = 80
     SPEED            = 2
-    DETECT_RANGE     = 450
-    LOSE_RANGE       = 700
+    DETECT_RANGE     = 670
+    LOSE_RANGE       = 1050
     ATTACK_RANGE     = 48
     ATTACK_DAMAGE    = 18
     ATTACK_CD        = 80
@@ -2180,8 +2180,8 @@ class MechaGolem(BaseEnemy):
     PATROL_SPEED   = 1
     PATROL_RADIUS  = 80
     SPEED          = 2
-    DETECT_RANGE   = 550
-    LOSE_RANGE     = 800
+    DETECT_RANGE   = 800
+    LOSE_RANGE     = 1200
     ATTACK_RANGE   = 75
     THROW_RANGE    = 320
     LASER_RANGE    = 500
