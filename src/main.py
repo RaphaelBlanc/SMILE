@@ -1432,7 +1432,7 @@ class Game:
                         print(f"Tentative de rejoindre le salon : {code}")
                         self._start_multi_as_client(code)
 
-                    elif action == "launch_multi_pvp":
+                    elif action == "launch_multi_coop":
                         self._launch_multi_game()
                         
                     elif action == "disconnect_multi":
