@@ -1,42 +1,14 @@
 {
-    "save_name": "boss1",
-    "current_map_name": "assets/maps/map_boss_glace.tmx",
+    "save_name": "Ma Sauvegarde",
+    "current_map_name": "assets/maps/ZoneLave.tmx",
     "player_pos": [
-        112,
-        943
+        693,
+        523
     ],
-    "player_hp": 37,
-    "score": 135,
-    "kill_count": 4,
+    "player_hp": 100,
+    "score": 0,
+    "kill_count": 0,
     "boss_glace_dead": false,
-    "killed_mobs": [
-        [
-            "assets/maps/map_glace.tmx",
-            [
-                1380,
-                2706
-            ]
-        ],
-        [
-            "assets/maps/map_glace.tmx",
-            [
-                3332,
-                1102
-            ]
-        ],
-        [
-            "assets/maps/map_glace.tmx",
-            [
-                2434,
-                564
-            ]
-        ],
-        [
-            "assets/maps/map_glace.tmx",
-            [
-                910,
-                1944
-            ]
-        ]
-    ]
+    "boss_lave_dead": false,
+    "killed_mobs": []
 }
