@@ -124,22 +124,22 @@
   <object id="9" type="Spawn_Mort_Boss" x="1392" y="1959.33">
    <point/>
   </object>
-  <object id="10" type="ChientEnrage" x="3310.67" y="513.333">
+  <object id="10" type="ChienEnrage" x="3310.67" y="513.333">
    <point/>
   </object>
   <object id="12" type="EspritFeu" x="3264" y="512">
    <point/>
   </object>
-  <object id="13" type="ChientEnrage" x="2225.33" y="526.667">
+  <object id="13" type="ChienEnrage" x="2225.33" y="526.667">
    <point/>
   </object>
-  <object id="14" type="ChientEnrage" x="783" y="1361">
+  <object id="14" type="ChienEnrage" x="783" y="1361">
    <point/>
   </object>
   <object id="16" type="EspritFeu" x="1050" y="1350">
    <point/>
   </object>
-  <object id="17" type="ChientEnrage" x="4048" y="1128">
+  <object id="17" type="ChienEnrage" x="4048" y="1128">
    <point/>
   </object>
   <object id="18" type="EspritFeu" x="3864" y="1124">
@@ -148,13 +148,13 @@
   <object id="23" type="EspritFeu" x="3700" y="1126">
    <point/>
   </object>
-  <object id="24" type="ChientEnrage" x="3992" y="1996">
+  <object id="24" type="ChienEnrage" x="3992" y="1996">
    <point/>
   </object>
-  <object id="25" type="ChientEnrage" x="4562.67" y="1937.33">
+  <object id="25" type="ChienEnrage" x="4562.67" y="1937.33">
    <point/>
   </object>
-  <object id="26" type="ChientEnrage" x="592" y="1964">
+  <object id="26" type="ChienEnrage" x="592" y="1964">
    <point/>
   </object>
   <object id="27" type="EspritFeu" x="1884" y="1968">
@@ -163,10 +163,10 @@
   <object id="28" type="EspritFeu" x="2900" y="2064">
    <point/>
   </object>
-  <object id="29" type="ChientEnrage" x="3598.67" y="2894.67">
+  <object id="29" type="ChienEnrage" x="3598.67" y="2894.67">
    <point/>
   </object>
-  <object id="30" type="ChientEnrage" x="2764" y="2894.67">
+  <object id="30" type="ChienEnrage" x="2764" y="2894.67">
    <point/>
   </object>
   <object id="31" type="EspritFeu" x="3564" y="2894.67">
