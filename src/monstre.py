@@ -1568,8 +1568,13 @@ class Fox(BaseEnemy):
 
         surf = self.animator.get_current_frame(dt, anim_state, loop=loop)
         
-        if not self.facing_right:
-            surf = pygame.transform.flip(surf, True, False)
+        # Fox_Run.png (flee) is oriented LEFT by default, whereas Fox_walk, Fox_Idle, etc. are oriented RIGHT.
+        if anim_state == "flee":
+            if self.facing_right:
+                surf = pygame.transform.flip(surf, True, False)
+        else:
+            if not self.facing_right:
+                surf = pygame.transform.flip(surf, True, False)
             
         frames = self.animator.animations.get(anim_state, [])
         done = (not loop) and len(frames) > 0 and self.animator.frame_index >= len(frames) - 1
