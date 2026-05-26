@@ -14,7 +14,7 @@ from menu import Menu
 from npc import NPC
 from npc import DialogueBox
 from network import Network
-from boss import Glacius
+from boss import Glacius, Pyros
 from monstre import (
     ChienEnrage, GoblinMelee, GoblinArcher,
     EspritFeu, EspritGlace, EspritFoudre, EspritNature,
@@ -309,6 +309,7 @@ class Game:
         self.monster_sprites    = pygame.sprite.Group()
         self.enemy_proj_sprites = pygame.sprite.Group()
         self.vfx_sprites        = pygame.sprite.Group()
+        self.transition_sprites = pygame.sprite.Group()
 
         # --- UI DIALOGUE ---
         self.dialogue_box = DialogueBox(self.screen)
@@ -322,12 +323,15 @@ class Game:
         
         # --- ETATS DE QUETE ---
         self.boss_glace_dead = False
+        self.boss_lave_dead = False
         self.coming_from_boss = False
         self.coming_from_glace = False
+        self.coming_from_lave = False
         self.coming_from_teleport = False
         self.spawn_from_boss_point = None
         self.spawn_porte_glace_point = None
         self.spawn_from_glace_point = None
+        self.spawn_from_lave_point = None
         self.pnj_boss_pos = None
 
         # Joueur local initial (sera repositionné par load_map)
@@ -336,14 +340,16 @@ class Game:
         self.respawn_point = (200, 200)
 
         # --- CHARGEMENT DE LA MAP ---
-        self.load_map('assets/maps/map_glace.tmx')
+        self.load_map('assets/maps/Surface.tmx')
 
     def _get_zone_name(self, map_path):
         if not map_path:
             return ""
+        if "zone1" in map_path.lower():
+            return "zone1"
         if "glace" in map_path:
             return "glace"
-        if "map1" in map_path or "lave" in map_path:
+        if "map1" in map_path or "lave" in map_path.lower():
             return "lave"
         if "finale" in map_path:
             return "finale"
@@ -375,9 +381,16 @@ class Game:
         self.monster_sprites.empty()
         self.enemy_proj_sprites.empty()
         self.vfx_sprites.empty()
+        self.transition_sprites.empty()
         self.particles.clear()
         self.doors.clear()
         self.dialogue_box.hide()
+        
+        self.spawn_from_boss_point = None
+        self.spawn_porte_glace_point = None
+        self.spawn_from_glace_point = None
+        self.spawn_from_lave_point = None
+        self.pnj_boss_pos = None
 
         full_path = os.path.join(ROOT_DIR, map_file)
         if not os.path.exists(full_path):
@@ -409,6 +422,13 @@ class Game:
         except ValueError:
             print("INFO : Calque 'Echelles' introuvable — echelles ignorees.")
 
+        try:
+            for x, y, surf in tmx_data.get_layer_by_name('Transition').tiles():
+                if surf:
+                    Tile((x * 32, y * 32), surf, [self.transition_sprites])
+        except ValueError:
+            pass
+
         player_spawn = (200, 200)
         try:
             for obj in tmx_data.get_layer_by_name('Objets'):
@@ -421,7 +441,7 @@ class Game:
 
                 obj_type_lower = obj_type.lower() if obj_type else ''
 
-                if obj_type_lower in ('spawnjoueur', 'spawn_lave'):
+                if obj_type_lower in ('spawnjoueur', 'spawn_lave', 'spawn_depart', 'spawn_joueur_boss_lave'):
                     player_spawn = pos
                 elif obj_type_lower == 'spawnjoueurboss':
                     self.zone_boss_respawn_point = pos
@@ -429,7 +449,11 @@ class Game:
                 elif obj_type_lower in ('spawn_from_boss', 'spawn_form_boss'):
                     self.spawn_from_boss_point = pos
                 elif obj_type_lower == 'spawn_from_glace':
-                    self.spawn_from_glace_point = (pos[0] - 150, pos[1])
+                    self.spawn_from_glace_point = pos
+                elif obj_type_lower == 'spawn_from_haut':
+                    player_spawn = pos
+                elif obj_type_lower == 'spawn_from_lave':
+                    self.spawn_from_lave_point = pos
                 elif obj_type_lower in ('pnj_boss', 'pnjboss'):
                     if "map_boss_glace" in map_file:
                         self.pnj_boss_pos = pos
@@ -455,12 +479,15 @@ class Game:
                         dest = 'assets/maps/ZoneLave.tmx'
                     elif obj_type_lower == 'portebossglace':
                         dest = 'assets/maps/map_boss_glace.tmx'
-                    elif obj_type_lower in ('porteglace', 'porte_to_glace'):
+                    elif obj_type_lower == 'porte_to_glace':
                         dest = 'assets/maps/map_glace.tmx'
+                        self.spawn_porte_to_glace_point = pos
+                    elif obj_type_lower == 'porteglace':
+                        dest = 'assets/maps/ZoneTerre.tmx'
                     elif obj_type_lower in ('porte_to_zone_1', 'porte_to zone_1'):
-                        dest = 'assets/maps/map_zone_1.tmx'
+                        dest = 'assets/maps/Zone1.tmx'
                     elif obj_type_lower == 'porte_boss_lave':
-                        dest = 'assets/maps/map_boss_lave.tmx'
+                        dest = 'assets/maps/BossLave.tmx'
                     else:
                         dest = 'assets/maps/map_finale.tmx'
                     
@@ -473,6 +500,15 @@ class Game:
                         floor_y = pos[1] + getattr(obj, 'height', 32)
                         boss = Glacius(pos, self.obstacle_sprites, floor_y)
                         self.monster_sprites.add(boss)
+                elif obj_type_lower == 'spawn_boss_lave':
+                    if not self.boss_lave_dead:
+                        floor_y = pos[1] + getattr(obj, 'height', 32)
+                        boss = Pyros(pos, self.obstacle_sprites, floor_y)
+                        self.monster_sprites.add(boss)
+                    else:
+                        self.pnj_boss_pos = pos
+                        msg = "Le gardien de la lave est vaincu.|Je te téléporte hors d'ici."
+                        npc = NPC(pos, msg, [self.visibles_sprites, self.npc_sprites], on_end_callback=self.teleport_from_boss_lave)
                 elif obj_type in MOB_CLASSES:
                     if (self.current_map_name, pos) not in self.killed_mobs:
                         mob = self._spawn_mob(obj_type, pos)
@@ -494,10 +530,17 @@ class Game:
         elif self.coming_from_glace and self.spawn_from_glace_point:
             self.player.set_position(self.spawn_from_glace_point)
             self.respawn_point = self.spawn_from_glace_point
-        elif self.coming_from_teleport and hasattr(self, 'spawn_porte_glace_point'):
-            tp_pos = (self.spawn_porte_glace_point[0] - 50, self.spawn_porte_glace_point[1])
+        elif self.coming_from_lave and self.spawn_from_lave_point:
+            self.player.set_position(self.spawn_from_lave_point)
+            self.respawn_point = self.spawn_from_lave_point
+        elif self.coming_from_teleport and getattr(self, 'spawn_porte_glace_point', None):
+            tp_pos = (self.spawn_porte_glace_point[0] - 50, self.spawn_porte_glace_point[1] - 150)
             self.player.set_position(tp_pos)
             self.respawn_point = tp_pos
+        elif getattr(self, 'coming_from_teleport_lave', False) and getattr(self, 'spawn_porte_to_glace_point', None):
+            safe_pos = (self.spawn_porte_to_glace_point[0] - 100, self.spawn_porte_to_glace_point[1] - 150)
+            self.player.set_position(safe_pos)
+            self.respawn_point = safe_pos
         else:
             self.player.set_position(player_spawn)
             self.respawn_point = player_spawn
@@ -505,7 +548,9 @@ class Game:
         self.killed_by_boss = False
         self.coming_from_boss = False
         self.coming_from_glace = False
+        self.coming_from_lave = False
         self.coming_from_teleport = False
+        self.coming_from_teleport_lave = False
         
         # Snap camera to player immediately to avoid panning from (0,0)
         target_x = self.player.rect.centerx - SCREEN_WIDTH // 2
@@ -516,6 +561,10 @@ class Game:
     def teleport_from_boss(self):
         self.coming_from_teleport = True
         self.load_map('assets/maps/map_glace.tmx')
+
+    def teleport_from_boss_lave(self):
+        self.coming_from_teleport_lave = True
+        self.load_map('assets/maps/ZoneLave.tmx')
 
     def load_game(self, slot):
         self.current_save_slot = slot
@@ -531,6 +580,7 @@ class Game:
                 self.score = data.get('score', 0)
                 self.kill_count = data.get('kill_count', 0)
                 self.boss_glace_dead = data.get('boss_glace_dead', False)
+                self.boss_lave_dead = data.get('boss_lave_dead', False)
                 
                 # Killed mobs - convert back to set of tuples
                 killed = data.get('killed_mobs', [])
@@ -539,7 +589,7 @@ class Game:
                     self.killed_mobs.add((item[0], tuple(item[1])))
                 
                 # Restore map
-                map_name = data.get('current_map_name', 'assets/maps/map_glace.tmx')
+                map_name = data.get('current_map_name', 'assets/maps/Surface.tmx')
                 # Set current_map_name before load_map to prevent killed_mobs from being cleared
                 self.current_map_name = map_name
                 self.load_map(map_name)
@@ -553,15 +603,16 @@ class Game:
                 print(f"Partie chargee depuis {filename}")
             except Exception as e:
                 print(f"Erreur lors du chargement : {e}")
-                self.load_map('assets/maps/map_glace.tmx')
+                self.load_map('assets/maps/Surface.tmx')
         else:
             print(f"Aucune sauvegarde trouvee pour le slot {slot}, nouvelle partie.")
             # Start fresh
             self.score = 0
             self.kill_count = 0
             self.boss_glace_dead = False
+            self.boss_lave_dead = False
             self.killed_mobs.clear()
-            self.load_map('assets/maps/map_glace.tmx')
+            self.load_map('assets/maps/Surface.tmx')
             self.player.hp_current = 100
             
         self.last_save_time = pygame.time.get_ticks()
@@ -585,6 +636,7 @@ class Game:
             'score': self.score,
             'kill_count': self.kill_count,
             'boss_glace_dead': self.boss_glace_dead,
+            'boss_lave_dead': self.boss_lave_dead,
             'killed_mobs': killed_list
         }
         
@@ -806,6 +858,10 @@ class Game:
                 # En mode client on laisse quand même le joueur se mettre à jour
                 # visuellement (la position sera écrasée par l'état réseau)
                 self.player.update(self.obstacle_sprites, self.ladder_sprites, dt)
+                
+                # Check transition to Zone1
+                if pygame.sprite.spritecollideany(self.player, self.transition_sprites):
+                    self.load_map('assets/maps/Zone1.tmx')
 
             # NPC
             for npc in self.npc_sprites:
@@ -880,6 +936,11 @@ class Game:
                         self.boss_death_pos = (m.rect.centerx, m.rect.bottom - 64)
                         msg = "Bravo, tu as vaincu le boss !|Je te téléporte à la porte suivante."
                         npc = NPC(self.boss_death_pos, msg, [self.visibles_sprites, self.npc_sprites], on_end_callback=self.teleport_from_boss)
+                    elif hasattr(m, 'attack_state') and mob_type == 'Pyros':
+                        self.boss_lave_dead = True
+                        self.boss_death_pos = (m.rect.centerx, m.rect.bottom - 64)
+                        msg = "Bravo, tu as vaincu le gardien de la lave !|Je te téléporte hors d'ici."
+                        npc = NPC(self.boss_death_pos, msg, [self.visibles_sprites, self.npc_sprites], on_end_callback=self.teleport_from_boss_lave)
                     else:
                         if hasattr(m, 'spawn_pos'):
                             self.killed_mobs.add((self.current_map_name, m.spawn_pos))
@@ -1104,22 +1165,31 @@ class Game:
 
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_e:
                     if not self.is_paused and self.player.hp_current > 0:
+                        map_before = getattr(self, 'current_map_name', None)
                         # Interaction PNJ
                         for npc in self.npc_sprites:
                             if hasattr(npc, 'interact'):
                                 npc.interact()
                         
+                        if getattr(self, 'current_map_name', None) != map_before:
+                            continue
+                        
                         # Interaction Portes
                         for door in self.doors:
                             if self.player.hitbox.colliderect(door['rect'].inflate(64, 64)):
-                                if door['type'] in ('porteglace', 'porte_to_glace') and 'boss' in self.current_map_name and not self.boss_glace_dead:
+                                if door['type'] == 'porteglace' and not self.boss_glace_dead:
                                     self.dialogue_box.show("La porte est verrouillée...", owner=None)
+                                    break
+                                elif door['type'] == 'porte_to_glace' and not self.boss_lave_dead:
+                                    self.dialogue_box.show("La porte vers la zone de glace est verrouillée...\nIl faut vaincre le boss de lave.", owner=None)
                                     break
                                 
                                 if 'boss' in self.current_map_name:
                                     self.coming_from_boss = True
                                 elif 'glace' in self.current_map_name:
                                     self.coming_from_glace = True
+                                elif 'lave' in self.current_map_name.lower():
+                                    self.coming_from_lave = True
                                 self.load_map(door['dest'])
                                 break
 
