@@ -391,6 +391,7 @@ class Game:
         self.npc_sprites.empty()
         self.ladder_sprites.empty()
         self.monster_sprites.empty()
+        self.mob_counter = 0
         self.enemy_proj_sprites.empty()
         self.vfx_sprites.empty()
         self.transition_sprites.empty()
@@ -721,7 +722,7 @@ class Game:
 
         if self.network.role == "host":
             self.net_timer += dt
-            if self.net_timer >= 1 / 120:          # 120 fois/seconde (très fluide)
+            if self.net_timer >= 1 / 60:          # 60 fois/seconde (très fluide)
                 self.net_timer = 0
                 state = {
                     "map_name": getattr(self, "current_map_name", ""),
@@ -773,7 +774,7 @@ class Game:
         # ── CLIENT : envoie son état (P2), reçoit l'état du host (P1) ──────
         elif self.network.role == "client":
             self.net_timer += dt
-            if self.net_timer >= 1 / 120:
+            if self.net_timer >= 1 / 60:
                 self.net_timer = 0
                 state = {
                     "p2_x":  self.player.rect.x,
@@ -930,10 +931,17 @@ class Game:
             # Monstres
             for m in list(self.monster_sprites):
                 if not self.is_multi or self.network.role == "host":
+                    target_player = self.player
+                    if self.is_multi and getattr(self, 'remote_player', None) and self.remote_player.hp_current > 0:
+                        dist_local = pygame.math.Vector2(m.rect.center).distance_to(self.player.rect.center)
+                        dist_remote = pygame.math.Vector2(m.rect.center).distance_to(self.remote_player.rect.center)
+                        if dist_remote < dist_local:
+                            target_player = self.remote_player
+
                     if hasattr(m, 'attack_state'):
-                        m.update(self.player.rect, dt)
+                        m.update(target_player.rect, dt)
                     else:
-                        m.update(self.player, self.obstacle_sprites)
+                        m.update(target_player, self.obstacle_sprites)
                 else:
                     if getattr(m, 'contact_timer', 0) > 0:
                         m.contact_timer -= 1
