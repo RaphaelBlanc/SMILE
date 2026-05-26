@@ -4,6 +4,7 @@ import sys
 import os
 import math
 import glob
+import json
 from config import ROOT_DIR
 
 # --- CONFIGURATION ---
@@ -31,11 +32,12 @@ class Menu:
         self.state = "main"
 
         # Polices
-        self.titre_font  = pygame.font.SysFont("Comic Sans MS", 100)
-        self.smile_font  = pygame.font.SysFont("Comic Sans MS", 150)
-        self.button_font = pygame.font.SysFont("Comic Sans MS", 35)
-        self.code_font   = pygame.font.SysFont("Consolas",      60, bold=True)
-        self.small_font  = pygame.font.SysFont("Comic Sans MS", 28)
+        font_names = "fantasquesansmnerdfont,z003,comicsansms,impact"
+        self.titre_font  = pygame.font.SysFont(font_names, 100)
+        self.smile_font  = pygame.font.SysFont(font_names, 150)
+        self.button_font = pygame.font.SysFont(font_names, 35)
+        self.code_font   = pygame.font.SysFont(font_names, 60, bold=True)
+        self.small_font  = pygame.font.SysFont(font_names, 28)
 
         # --- LOGO ---
         try:
@@ -125,6 +127,8 @@ class Menu:
             "attack":     pygame.K_f,
             "dash":       pygame.K_v,
         }
+        self.load_keybinds()
+        
         # Labels lisibles pour chaque action
         self.keybind_labels = {
             "move_left":  "Aller à gauche",
@@ -139,7 +143,11 @@ class Menu:
         # Quelle action est en attente d'une nouvelle touche (None = aucune)
         self.rebinding_action    = None
         self.keybind_list_y      = 400     # Y de départ de la liste
-        self.keybind_row_h       = 62      # hauteur d'une ligne
+        self.keybind_row_h       = 60      # Hauteur de chaque ligne
+        
+        # Presets
+        self.btn_preset_wasd = self._btn(center_x + 650, 450, 150, 60)
+        self.btn_preset_zqsd = self._btn(center_x + 650, 550, 150, 60)
         # Rect de chaque bouton "rebind" (reconstruit à chaque draw)
         self.keybind_btn_rects   = {}
 
@@ -192,7 +200,7 @@ class Menu:
         surf = font.render(text, True, color)
         self.screen.blit(surf, surf.get_rect(center=(x, y)))
 
-    def draw_rainbow_bouncy_text(self, text, font, cx, cy):
+    def draw_rainbow_bouncy_text(self, text, font, cx, cy, bounce_amp=10, rot_amp=15):
         colors = [
             (255, 0, 0),    # Rouge
             (255, 127, 0),  # Orange
@@ -212,7 +220,7 @@ class Menu:
             surf = font.render(char, True, color)
             
             # Rotation pour rendre la lettre "moins droite"
-            angle = math.sin(t + i) * 15
+            angle = math.sin(t + i) * rot_amp
             rotated_surf = pygame.transform.rotate(surf, angle)
             
             surfaces.append((rotated_surf, i))
@@ -223,7 +231,7 @@ class Menu:
         
         for surf, i in surfaces:
             # Effet de rebond vertical
-            y_offset = math.cos(t + i) * 10
+            y_offset = math.cos(t + i) * bounce_amp
             rect = surf.get_rect(center=(current_x + surf.get_width() // 2, cy + y_offset))
             self.screen.blit(surf, rect)
             current_x += surf.get_width()
@@ -232,7 +240,26 @@ class Menu:
         color = color_hover if rect.collidepoint(mouse_pos) else color_normal
         pygame.draw.rect(self.screen, color, rect, border_radius=15)
         pygame.draw.rect(self.screen, WHITE,  rect, 3, border_radius=15)
-        self.draw_text(text, self.button_font, WHITE, rect.centerx, rect.centery)
+        
+        # Choix de la couleur du texte en fonction du texte
+        text_upper = text.upper()
+        if "RETOUR" in text_upper or "ANNULER" in text_upper or "QUITTER" in text_upper or "NON" in text_upper or "X" == text_upper:
+            # Rouge clair (contraste sur gris/bleu)
+            text_color = (255, 100, 100)
+            # Si le fond est deja rouge, on met le texte en blanc
+            if color in [(200, 0, 0), (255, 50, 50), RED]:
+                text_color = WHITE
+        elif "JOUER" in text_upper or "REPRENDRE" in text_upper or "NOUVELLE" in text_upper or "CONFIRMER" in text_upper or "OUI" in text_upper or "CREER" in text_upper or "REJOINDRE" in text_upper or "HISTOIRE" in text_upper or "MULTIJOUEUR" in text_upper:
+            # Vert clair
+            text_color = (100, 255, 100)
+            if color in [GREEN, (50, 255, 50)]:
+                text_color = BLACK
+        elif "PARAMETRES" in text_upper:
+            text_color = YELLOW
+        else:
+            text_color = WHITE
+            
+        self.draw_text(text, self.button_font, text_color, rect.centerx, rect.centery)
 
     # ── Draw principal ─────────────────────────────────────────────
 
@@ -250,7 +277,7 @@ class Menu:
         # ── Menu principal ──────────────────────────────────────────
         if self.state == "main":
             if game_started:
-                self.draw_text("PAUSE",    self.titre_font, RED, cx, 320)
+                self.draw_text("PAUSE", self.titre_font, RED, cx, 320)
                 btn_text = "REPRENDRE"
                 btn_quit_text = "MENU PRINCIPAL"
             else:
@@ -263,14 +290,14 @@ class Menu:
 
         # ── Sélection de mode ───────────────────────────────────────
         elif self.state == "mode_selection":
-            self.draw_text("CHOISIR UN MODE", self.titre_font, WHITE, cx, 250)
+            self.draw_text("CHOISIR UN MODE", self.titre_font, (100, 255, 100), cx, 250)
             self.draw_button(self.btn_mode_story, "MODE HISTOIRE", BLUE_MENU, BLUE_HOVER, mouse_pos)
             self.draw_button(self.btn_mode_multi, "MULTIJOUEUR",   BLUE_MENU, BLUE_HOVER, mouse_pos)
             self.draw_button(self.btn_back,       "RETOUR",        GREY,      WHITE,      mouse_pos)
 
         # ── Sélection de sauvegarde ─────────────────────────────────
         elif self.state == "save_selection":
-            self.draw_text("CHOISIR UNE SAUVEGARDE", self.titre_font, WHITE, cx, 150)
+            self.draw_text("CHOISIR UNE SAUVEGARDE", self.titre_font, YELLOW, cx, 150)
             
             if not self.saves:
                 self.draw_text("aucune sauvegarde", self.button_font, GREY, cx, SCREEN_HEIGHT // 2)
@@ -290,7 +317,7 @@ class Menu:
 
         # ── Paramètres ──────────────────────────────────────────────
         elif self.state == "settings":
-            self.draw_text("PARAMETRES", self.titre_font, WHITE, cx, 250)
+            self.draw_text("PARAMETRES", self.titre_font, YELLOW, cx, 250)
 
             # ── Onglets ─────────────────────────────────────────────
             for btn, label, tab in [
@@ -345,6 +372,7 @@ class Menu:
                     btn_r = pygame.Rect(0, 0, 220, 44)
                     btn_r.center = (cx + 280, row_y)
                     self.keybind_btn_rects[action] = btn_r
+                    
 
                     if self.rebinding_action == action:
                         pygame.draw.rect(self.screen, YELLOW, btn_r, border_radius=10)
@@ -361,19 +389,22 @@ class Menu:
                     self.draw_text("ESC pour annuler", self.small_font, RED, cx,
                                    self.keybind_list_y + len(actions) * self.keybind_row_h + 10)
 
+                self.draw_button(self.btn_preset_wasd, "WASD", (204, 153, 0), YELLOW, mouse_pos)
+                self.draw_button(self.btn_preset_zqsd, "ZQSD", (204, 153, 0), YELLOW, mouse_pos)
+
             btn_back = self.btn_back_settings_keybinds if self.settings_tab == "keybinds" else self.btn_back_settings
             self.draw_button(btn_back, "RETOUR", GREY, WHITE, mouse_pos)
 
         # ── Lobby multi : choisir host ou client ────────────────────
         elif self.state == "multi_lobby":
-            self.draw_text("MULTIJOUEUR", self.titre_font, WHITE, cx, 250)
+            self.draw_text("MULTIJOUEUR", self.titre_font, YELLOW, cx, 250)
             self.draw_button(self.btn_host,       "CREER UN SALON", BLUE_MENU, BLUE_HOVER, mouse_pos)
             self.draw_button(self.btn_join,       "REJOINDRE",      BLUE_MENU, BLUE_HOVER, mouse_pos)
             self.draw_button(self.btn_back_lobby, "RETOUR",         GREY,      WHITE,      mouse_pos)
 
         # ── Host attend l'ami ────────────────────────────────────────
         elif self.state == "multi_host_wait":
-            self.draw_text("EN ATTENTE D'UN JOUEUR", self.titre_font, WHITE, cx, 220)
+            self.draw_text("EN ATTENTE D'UN JOUEUR", self.titre_font, YELLOW, cx, 220)
 
             if network and network.error:
                 self.draw_text(f"ERREUR : {network.error}", self.small_font, RED, cx, 360)
@@ -393,7 +424,7 @@ class Menu:
 
         # ── Client saisit le code ────────────────────────────────────
         elif self.state == "multi_join_input":
-            self.draw_text("REJOINDRE UN SALON", self.titre_font, WHITE, cx, 220)
+            self.draw_text("REJOINDRE UN SALON", self.titre_font, YELLOW, cx, 220)
             self.draw_text("Entrez le code du salon :", self.small_font, WHITE, cx, 360)
 
             # Zone de saisie
@@ -412,7 +443,7 @@ class Menu:
 
         # ── Client attend confirmation ───────────────────────────────
         elif self.state == "multi_join_wait":
-            self.draw_text("CONNEXION EN COURS...", self.titre_font, WHITE, cx, 300)
+            self.draw_text("CONNEXION EN COURS...", self.titre_font, YELLOW, cx, 300)
             if network and network.error:
                 self.draw_text(f"ERREUR : {network.error}", self.small_font, RED, cx, 420)
                 self.draw_button(self.btn_back_lobby, "RETOUR", GREY, WHITE, mouse_pos)
@@ -465,6 +496,7 @@ class Menu:
                     self.rebinding_action = None
                 else:
                     self.keybinds[self.rebinding_action] = event.key
+                    self.save_keybinds()
                     self.rebinding_action = None
                 return ("keybinds_changed", self.keybinds)
 
@@ -527,6 +559,23 @@ class Menu:
                     self.settings_tab     = "keybinds"
                 # Bouton rebind dans la liste des touches
                 elif self.settings_tab == "keybinds":
+                    if self.btn_preset_wasd.collidepoint(event.pos):
+                        self.keybinds["move_up"]    = pygame.K_w
+                        self.keybinds["move_down"]  = pygame.K_s
+                        self.keybinds["move_left"]  = pygame.K_a
+                        self.keybinds["move_right"] = pygame.K_d
+                        self.save_keybinds()
+                        self.rebinding_action = None
+                        return ("keybinds_changed", self.keybinds)
+                    elif self.btn_preset_zqsd.collidepoint(event.pos):
+                        self.keybinds["move_up"]    = pygame.K_z
+                        self.keybinds["move_down"]  = pygame.K_s
+                        self.keybinds["move_left"]  = pygame.K_q
+                        self.keybinds["move_right"] = pygame.K_d
+                        self.save_keybinds()
+                        self.rebinding_action = None
+                        return ("keybinds_changed", self.keybinds)
+                        
                     for action, btn_r in self.keybind_btn_rects.items():
                         if btn_r.collidepoint(event.pos):
                             self.rebinding_action = action
@@ -581,3 +630,23 @@ class Menu:
         self.input_error = ""
         self.state = "multi_join_wait"
         return "multi_join_session"   # main.py s'occupera d'appeler network.join_session
+
+    def load_keybinds(self):
+        filepath = os.path.join(ROOT_DIR, "keybinds.json")
+        if os.path.exists(filepath):
+            try:
+                with open(filepath, "r") as f:
+                    data = json.load(f)
+                    for action, key in data.items():
+                        if action in self.keybinds:
+                            self.keybinds[action] = key
+            except Exception as e:
+                print(f"Erreur lors du chargement des touches : {e}")
+
+    def save_keybinds(self):
+        filepath = os.path.join(ROOT_DIR, "keybinds.json")
+        try:
+            with open(filepath, "w") as f:
+                json.dump(self.keybinds, f, indent=4)
+        except Exception as e:
+            print(f"Erreur lors de la sauvegarde des touches : {e}")
