@@ -50,6 +50,14 @@ class Menu:
             self.smile_image = pygame.Surface((500, 500))
             self.smile_image.fill(WHITE)
 
+        try:
+            self.title_logo = pygame.image.load(os.path.join(ROOT_DIR, "assets/logo.png")).convert_alpha()
+            logo_width = 800
+            logo_ratio = self.title_logo.get_width() / self.title_logo.get_height()
+            self.title_logo = pygame.transform.scale(self.title_logo, (logo_width, int(logo_width / logo_ratio)))
+        except (FileNotFoundError, pygame.error):
+            self.title_logo = None
+
         # --- VIDÉO DE FOND ---
         self.video_path    = os.path.join(ROOT_DIR, "assets/video/videofondmenu.mp4")
         self.video_capture = cv2.VideoCapture(self.video_path)
@@ -279,6 +287,13 @@ class Menu:
     def draw(self, game_started=False, network=None):
         self.update_video()
         self.screen.blit(self.background_surface, (0, 0))
+        
+        # Masquer l'étoile en bas à droite avec un patch dynamique du décor
+        patch_rect = pygame.Rect(SCREEN_WIDTH - 500, SCREEN_HEIGHT - 200, 250, 200)
+        patch_surface = self.background_surface.subsurface(patch_rect)
+        patch_surface = pygame.transform.flip(patch_surface, True, False)
+        self.screen.blit(patch_surface, (SCREEN_WIDTH - 250, SCREEN_HEIGHT - 200))
+        
         mouse_pos = pygame.mouse.get_pos()
 
         # Logo haut-droite
@@ -294,7 +309,15 @@ class Menu:
                 btn_text = "REPRENDRE"
                 btn_quit_text = "MENU PRINCIPAL"
             else:
-                self.draw_rainbow_bouncy_text("SMILE", self.smile_font, cx, 300)
+                if hasattr(self, 'title_logo') and self.title_logo:
+                    logo_rect = self.title_logo.get_rect(center=(cx, 200))
+                    t = pygame.time.get_ticks() / 1000.0
+                    import math
+                    offset_y = int(math.sin(t * 5) * 15)
+                    logo_rect.y += offset_y
+                    self.screen.blit(self.title_logo, logo_rect)
+                else:
+                    self.draw_rainbow_bouncy_text("SMILE", self.smile_font, cx, 200)
                 btn_text = "JOUER"
                 btn_quit_text = "QUITTER"
             self.draw_button(self.btn_play,     btn_text,     BLUE_MENU, BLUE_HOVER, mouse_pos)

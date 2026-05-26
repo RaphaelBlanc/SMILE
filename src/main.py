@@ -196,6 +196,14 @@ class IntroVideo:
             if not success:
                 break
 
+            # Enlever les bordures noires intégrées à la vidéo d'intro (5% de chaque côté sur 3840x2160)
+            # La zone utile est [108:2052, 192:3648]
+            h_vid, w_vid, _ = frame.shape
+            if w_vid > 192 and h_vid > 108:
+                margin_x = int(w_vid * 0.05)
+                margin_y = int(h_vid * 0.05)
+                frame = frame[margin_y:h_vid-margin_y, margin_x:w_vid-margin_x]
+
             frame = cv2.resize(frame, (SCREEN_WIDTH, SCREEN_HEIGHT))
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             frame = frame.transpose(1, 0, 2)
