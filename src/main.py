@@ -158,6 +158,7 @@ class Game:
         self.score        = 0
         self.kill_count   = 0
         self.particles    = []
+        self.show_help    = False
 
         # Screen-shake pour GolemPierre
         self.shake_ref = [0]
@@ -357,6 +358,8 @@ class Game:
     # ── Update ────────────────────────────────────────────────────
 
     def update(self, dt):
+        if self.show_help:
+            return
         if not self.is_paused:
             if self.is_multi and self.network:
                 # Initialise le timer de message si pas encore fait
@@ -556,6 +559,9 @@ class Game:
                 self.screen.blit(txt, (SCREEN_WIDTH // 2 - txt.get_width() // 2,
                                        SCREEN_HEIGHT // 2 - txt.get_height() // 2))
 
+        if self.show_help:
+            self.draw_help_overlay()
+
         pygame.display.flip()
 
     # ── Boucle principale ─────────────────────────────────────────
@@ -569,10 +575,15 @@ class Game:
                     pygame.quit()
                     sys.exit()
 
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                    if self.game_started:
-                        self.is_paused = not self.is_paused
-                        self.menu.state = "main"
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_F1:
+                        self.show_help = not self.show_help
+                    elif event.key == pygame.K_ESCAPE:
+                        if self.show_help:
+                            self.show_help = False
+                        elif self.game_started:
+                            self.is_paused = not self.is_paused
+                            self.menu.state = "main"
 
                 if self.is_paused:
                     action = self.menu.handle_input(event, self.network)
@@ -625,6 +636,90 @@ class Game:
 
             self.update(dt)
             self.draw()
+
+    def draw_help_overlay(self):
+        # Création de la surface d'aide
+        w_help, h_help = 1200, 800
+        help_surf = pygame.Surface((w_help, h_help), pygame.SRCALPHA)
+        help_surf.fill((10, 18, 36, 240)) # Fond sombre transparent
+        
+        # Bordures cyan
+        pygame.draw.rect(help_surf, (0, 200, 255, 255), (0, 0, w_help, h_help), 4, border_radius=15)
+        
+        # Police de titres et textes
+        f_title = pygame.font.SysFont("consolas", 28, bold=True)
+        f_section = pygame.font.SysFont("consolas", 20, bold=True)
+        f_text = pygame.font.SysFont("consolas", 16)
+        
+        # Titre principal
+        title_txt = f_title.render("AIDE CONTEXTUELLE - PROJET SMILE (F1 / ESC pour fermer)", True, (255, 220, 60))
+        help_surf.blit(title_txt, (w_help // 2 - title_txt.get_width() // 2, 30))
+        
+        # Section 1 : Commandes
+        sec1 = f_section.render("CONTRÔLES DU JOUEUR (DYNAMIQUE)", True, (0, 220, 255))
+        help_surf.blit(sec1, (50, 90))
+        
+        # Récupération des touches dynamiques
+        kb = self.player.keybinds
+        controls = [
+            ("Aller à gauche", pygame.key.name(kb["move_left"]).upper()),
+            ("Aller à droite", pygame.key.name(kb["move_right"]).upper()),
+            ("Sauter / Double Saut", pygame.key.name(kb["jump"]).upper()),
+            ("Grimper à l'échelle", pygame.key.name(kb["move_up"]).upper() + " (monter) / " + pygame.key.name(kb["move_down"]).upper() + " (descendre)"),
+            ("Attaquer (Boule de feu)", pygame.key.name(kb["attack"]).upper()),
+            ("Dash physique", pygame.key.name(kb["dash"]).upper()),
+            ("Sprint", "SHIFT GAUCHE (maintenir)"),
+        ]
+        
+        y = 130
+        for desc, key in controls:
+            txt_desc = f_text.render(f"- {desc} :", True, (255, 255, 255))
+            txt_key = f_text.render(key, True, (255, 220, 60))
+            help_surf.blit(txt_desc, (70, y))
+            help_surf.blit(txt_key, (350, y))
+            y += 24
+            
+        # Section 2 : Mécaniques & Altérations
+        sec2 = f_section.render("MENACES ET ALTÉRATIONS D'ÉTAT", True, (0, 220, 255))
+        help_surf.blit(sec2, (50, y + 20))
+        
+        elements = [
+            ("Esprit de Feu (Orange)", "Fonce et explose. Applique BRÛLURE (perte de vie de 5 HP/s).", (255, 100, 20)),
+            ("Esprit de Glace (Bleu)", "Lent. Explose et applique RALENTISSEMENT (vitesse divisée par 4).", (80, 180, 255)),
+            ("Esprit de Nature (Vert)", "Soigne les monstres proches. Applique POISON (perte de vie lente).", (30, 200, 80)),
+            ("Esprit de Foudre (Jaune)", "Bondit très rapidement. Explose en vous projetant en l'air.", (220, 255, 0)),
+            ("Golem de Pierre (Boss)", "Insensible pendant son renforcement, provoque de violents séismes.", (140, 130, 120)),
+        ]
+        
+        y += 50
+        for name, desc, color in elements:
+            txt_name = f_text.render(name, True, color)
+            txt_desc = f_text.render(desc, True, (255, 255, 255))
+            help_surf.blit(txt_name, (70, y))
+            help_surf.blit(txt_desc, (350, y))
+            y += 24
+            
+        # Section 3 : Multijoueur
+        sec3 = f_section.render("MODE COOPÉRATIF MULTIJOUEUR", True, (0, 220, 255))
+        help_surf.blit(sec3, (50, y + 20))
+        
+        multi_info = [
+            "Hôte (Host) : Crée une session, fournit le code unique et gère la physique.",
+            "Client : Rejoin à l'aide du code unique et transmet ses mouvements.",
+            "Latence : Synchronise les projectiles et monstres 120 fois par seconde pour plus de fluidité.",
+            "Timeout : Se déconnecte proprement après 3 secondes d'inactivité réseau.",
+        ]
+        
+        y += 50
+        for info in multi_info:
+            txt_info = f_text.render(f"- {info}", True, (255, 255, 255))
+            help_surf.blit(txt_info, (70, y))
+            y += 24
+            
+        # Dessin final centré
+        x_center = (SCREEN_WIDTH - w_help) // 2
+        y_center = (SCREEN_HEIGHT - h_help) // 2
+        self.screen.blit(help_surf, (x_center, y_center))
 
 #LANCEMENT DU JEU##########################################################################
 
