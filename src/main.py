@@ -470,8 +470,10 @@ class Game:
                         dest = 'assets/maps/ZoneLave.tmx'
                     elif obj_type_lower == 'portebossglace':
                         dest = 'assets/maps/map_boss_glace.tmx'
-                    elif obj_type_lower in ('porteglace', 'porte_to_glace'):
+                    elif obj_type_lower == 'porte_to_glace':
                         dest = 'assets/maps/map_glace.tmx'
+                    elif obj_type_lower == 'porteglace':
+                        dest = 'assets/maps/ZoneTerre.tmx'
                     elif obj_type_lower in ('porte_to_zone_1', 'porte_to zone_1'):
                         dest = 'assets/maps/Zone1.tmx'
                     elif obj_type_lower == 'porte_boss_lave':
@@ -1132,7 +1134,7 @@ class Game:
                         # Interaction Portes
                         for door in self.doors:
                             if self.player.hitbox.colliderect(door['rect'].inflate(64, 64)):
-                                if door['type'] in ('porteglace', 'porte_to_glace') and 'boss' in self.current_map_name and not self.boss_glace_dead:
+                                if door['type'] == 'porteglace' and not self.boss_glace_dead:
                                     self.dialogue_box.show("La porte est verrouillée...", owner=None)
                                     break
                                 
