@@ -664,7 +664,7 @@ class Game:
             self.last_transition_flag = "boss"
             self.player.set_position(self.spawn_from_boss_point)
             self.respawn_point = self.spawn_from_boss_point
-        elif self.coming_from_glace and hasattr(self, 'spawn_from_glace_point'):
+        elif self.coming_from_glace and getattr(self, 'spawn_from_glace_point', None):
             self.last_transition_flag = "glace"
             self.player.set_position(self.spawn_from_glace_point)
             self.respawn_point = self.spawn_from_glace_point
@@ -937,7 +937,9 @@ class Game:
                 state["boss_hazards"] = boss_hazards
                 state["projs"] = [{"x": p.rect.x, "y": p.rect.y} for p in self.player.capacite.projectiles]
                 state["enemy_projs"] = [{"x": p.rect.x, "y": p.rect.y} for p in self.enemy_proj_sprites]
+                state["events_for_client"] = getattr(self, 'events_for_client', [])
                 self.network.send_game_state(state)
+                self.events_for_client = []
 
             for msg in self.network.poll():
                 self.last_msg_time = pygame.time.get_ticks()
@@ -997,6 +999,16 @@ class Game:
                         elif remote_flag == "tp_glace": self.coming_from_teleport = True
                         elif remote_flag == "tp_lave": self.coming_from_teleport_lave = True
                         self.load_map(remote_map)
+
+                    for ev in msg.get("events_for_client", []):
+                        if ev["type"] in ("boss_proj", "boss_sw", "boss_hazard"):
+                            self.player.take_damage(ev["damage"])
+                            if ev["effect"] == "glace":
+                                self.player.slow_timer = 180
+                                self.player.slow_factor = 0.4
+                            elif ev["effect"] == "lave":
+                                self.player.burn_timer = 180
+                                self.player.burn_dps = 3
 
                     # Le joueur distant pour le client = p1 dans l'état host
                     if self.remote_player:
@@ -1231,25 +1243,46 @@ class Game:
                             self.killed_by_boss = ('Boss' in type(m).__name__ or hasattr(m, 'attack_state'))
 
                 if not is_m_dead and hasattr(m, 'attack_state'):
+                    if not hasattr(self, 'events_for_client'): self.events_for_client = []
                     # Collision pour les projectiles et ondes de choc internes du boss
-                    for p in m.projectiles:
+                    for p in list(m.projectiles):
                         if p.rect.colliderect(self.player.hitbox) and self.player.hp_current > 0:
                             self.player.take_damage(15)
+                            if 'Glacius' in type(m).__name__:
+                                self.player.slow_timer = 180
+                                self.player.slow_factor = 0.4
                             p.kill()
                             if self.player.hp_current <= 0:
                                 self.killed_by_boss = True
+                        elif self.is_multi and getattr(self, 'remote_player', None) and p.rect.colliderect(self.remote_player.rect) and self.remote_player.hp_current > 0:
+                            p.kill()
+                            effect = "glace" if 'Glacius' in type(m).__name__ else "lave"
+                            self.events_for_client.append({"type": "boss_proj", "damage": 15, "effect": effect})
+
                     for sw in m.shockwaves:
                         if sw.rect.colliderect(self.player.hitbox) and self.player.hp_current > 0:
                             if getattr(sw, 'hit_player', False) == False:
                                 self.player.take_damage(20)
+                                if 'Glacius' in type(m).__name__:
+                                    self.player.slow_timer = 180
+                                    self.player.slow_factor = 0.25
                                 sw.hit_player = True
                                 if self.player.hp_current <= 0:
                                     self.killed_by_boss = True
+                        elif self.is_multi and getattr(self, 'remote_player', None) and sw.rect.colliderect(self.remote_player.rect) and self.remote_player.hp_current > 0:
+                            if not getattr(sw, 'hit_remote', False):
+                                effect = "glace" if 'Glacius' in type(m).__name__ else "lave"
+                                self.events_for_client.append({"type": "boss_sw", "damage": 20, "effect": effect})
+                                sw.hit_remote = True
+
                     for h in m.hazards:
                         if h.rect.colliderect(self.player.hitbox) and self.player.hp_current > 0:
-                            self.player.take_damage(getattr(h, 'damage', 1)) # dégâts continus
+                            self.player.take_damage(getattr(h, 'damage', 1))
                             if self.player.hp_current <= 0:
                                 self.killed_by_boss = True
+                        elif self.is_multi and getattr(self, 'remote_player', None) and h.rect.colliderect(self.remote_player.rect) and self.remote_player.hp_current > 0:
+                            effect = "glace" if 'Glacius' in type(m).__name__ else "lave"
+                            self.events_for_client.append({"type": "boss_hazard", "damage": getattr(h, 'damage', 1), "effect": effect})
 
                 is_m_dead_finished = (getattr(m, 'dead', False) and getattr(m, 'death_finished', True)) or (hasattr(m, 'alive') and not m.alive and getattr(m, 'death_finished', True))
                 if is_m_dead_finished:
