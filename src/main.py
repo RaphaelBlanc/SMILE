@@ -993,8 +993,10 @@ class Game:
                             mob.rect.y = m_state["y"]
                             if hasattr(mob, 'hp_current'):
                                 mob.hp_current = m_state["hp"]
+                                if mob.hp_current <= 0: mob.dead = True
                             elif hasattr(mob, 'hp'):
                                 mob.hp = m_state["hp"]
+                                if mob.hp <= 0: mob.alive = False
                     for m in list(self.monster_sprites):
                         if getattr(m, 'id', None) not in received_ids:
                             if hasattr(m, 'hp_current'):
@@ -1146,7 +1148,13 @@ class Game:
                 else:
                     if getattr(m, 'contact_timer', 0) > 0:
                         m.contact_timer -= 1
-                    if hasattr(m, '_update_visual'):
+                    
+                    if getattr(m, 'dead', False) or not getattr(m, 'alive', True):
+                        if hasattr(m, 'attack_state'):
+                            m.update(self.player.rect, dt)
+                        else:
+                            m.update(self.player, self.obstacle_sprites)
+                    elif hasattr(m, '_update_visual'):
                         m._update_visual(dt * 1000)
 
                 if hasattr(m, 'heal_allies'):
