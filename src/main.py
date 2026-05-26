@@ -1432,6 +1432,15 @@ class Game:
                         print(f"Tentative de rejoindre le salon : {code}")
                         self._start_multi_as_client(code)
 
+                    elif action == "launch_multi_pvp":
+                        self._launch_multi_game()
+                        
+                    elif action == "disconnect_multi":
+                        if getattr(self, 'network', None):
+                            self.network.close()
+                            self.network = None
+                        self.menu.state = "multi_lobby"
+
                     elif action == "quit":
                         if self.game_started:
                             self._go_to_main_menu()
@@ -1445,15 +1454,15 @@ class Game:
                 if (self.network.role == "host"
                         and self.menu.state == "multi_host_wait"
                         and self.network.peer_joined):
-                    print("Pair connecté ! Démarrage de la partie multi.")
-                    self._launch_multi_game()
+                    print("Pair connecté ! Choix du mode multi.")
+                    self.menu.state = "multi_mode_final"
 
                 # CLIENT : la partie démarre dès que le serveur confirme "joined"
                 elif (self.network.role == "client"
                         and self.menu.state == "multi_join_wait"
                         and self.network.peer_joined):
-                    print("Code valide ! Démarrage de la partie multi.")
-                    self._launch_multi_game()
+                    print("Code valide ! Choix du mode multi.")
+                    self.menu.state = "multi_mode_final"
 
             self.update(dt)
             self.draw()

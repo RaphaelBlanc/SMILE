@@ -93,6 +93,11 @@ class Menu:
         self.btn_confirm_del_no  = self._btn(center_x + 170, SCREEN_HEIGHT // 2 + 50, 320, 60)
         self.save_to_delete = None
 
+        # ── Boutons choix mode final multi ──────────────────────────
+        self.btn_multi_pvp       = self._btn(center_x, SCREEN_HEIGHT // 2 - 50,  400, 80)
+        self.btn_multi_coop      = self._btn(center_x, SCREEN_HEIGHT // 2 + 70,  400, 80)
+        self.btn_back_multi_mode = self._btn(center_x, SCREEN_HEIGHT // 2 + 250, 250, 60)
+
         # ── Boutons lobby multi ─────────────────────────────────────
         self.btn_host       = self._btn(center_x, SCREEN_HEIGHT // 2 - 50,  400, 80)
         self.btn_join       = self._btn(center_x, SCREEN_HEIGHT // 2 + 70,  400, 80)
@@ -485,6 +490,13 @@ class Menu:
             btn_back = self.btn_back_settings_keybinds if self.settings_tab == "keybinds" else self.btn_back_settings
             self.draw_button(btn_back, "RETOUR", GREY, WHITE, mouse_pos)
 
+        # ── Choix mode final multi (coop/pvp) après connexion ───────
+        elif self.state == "multi_mode_final":
+            self.draw_text("CHOIX DU MODE", self.titre_font, YELLOW, cx, 250)
+            self.draw_button(self.btn_multi_coop, "COOPERATION", BLUE_MENU, BLUE_HOVER, mouse_pos)
+            self.draw_button(self.btn_multi_pvp,  "PVP",         BLUE_MENU, BLUE_HOVER, mouse_pos)
+            self.draw_button(self.btn_back_multi_mode, "RETOUR", GREY,      WHITE,      mouse_pos)
+
         # ── Lobby multi : choisir host ou client ────────────────────
         elif self.state == "multi_lobby":
             self.draw_text("MULTIJOUEUR", self.titre_font, YELLOW, cx, 250)
@@ -616,6 +628,15 @@ class Menu:
                     self.state = "save_selection"
                 if self.btn_mode_multi.collidepoint(event.pos): self.state = "multi_lobby"
                 if self.btn_back.collidepoint(event.pos):       self.state = "main"
+
+            # ── multi_mode_final ────────────────────────────────────
+            elif self.state == "multi_mode_final":
+                if self.btn_multi_coop.collidepoint(event.pos):
+                    pass # Ne fait rien pour l'instant
+                if self.btn_multi_pvp.collidepoint(event.pos):
+                    return "launch_multi_pvp"
+                if self.btn_back_multi_mode.collidepoint(event.pos):
+                    return "disconnect_multi"
 
             # ── save_selection ──────────────────────────────────────
             elif self.state == "save_selection":
