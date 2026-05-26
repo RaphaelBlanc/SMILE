@@ -2,6 +2,7 @@ import pygame
 import cv2
 import sys
 import os
+import math
 from config import ROOT_DIR
 
 # --- CONFIGURATION ---
@@ -30,6 +31,7 @@ class Menu:
 
         # Polices
         self.titre_font  = pygame.font.SysFont("Comic Sans MS", 100)
+        self.smile_font  = pygame.font.SysFont("Comic Sans MS", 150)
         self.button_font = pygame.font.SysFont("Comic Sans MS", 35)
         self.code_font   = pygame.font.SysFont("Consolas",      60, bold=True)
         self.small_font  = pygame.font.SysFont("Comic Sans MS", 28)
@@ -159,6 +161,42 @@ class Menu:
         surf = font.render(text, True, color)
         self.screen.blit(surf, surf.get_rect(center=(x, y)))
 
+    def draw_rainbow_bouncy_text(self, text, font, cx, cy):
+        colors = [
+            (255, 0, 0),    # Rouge
+            (255, 127, 0),  # Orange
+            (255, 255, 0),  # Jaune
+            (0, 255, 0),    # Vert
+            (0, 0, 255),    # Bleu
+            (75, 0, 130),   # Indigo
+            (148, 0, 211)   # Violet
+        ]
+        
+        surfaces = []
+        total_width = 0
+        t = pygame.time.get_ticks() / 200.0
+        
+        for i, char in enumerate(text):
+            color = colors[i % len(colors)]
+            surf = font.render(char, True, color)
+            
+            # Rotation pour rendre la lettre "moins droite"
+            angle = math.sin(t + i) * 15
+            rotated_surf = pygame.transform.rotate(surf, angle)
+            
+            surfaces.append((rotated_surf, i))
+            total_width += rotated_surf.get_width()
+            
+        start_x = cx - total_width // 2
+        current_x = start_x
+        
+        for surf, i in surfaces:
+            # Effet de rebond vertical
+            y_offset = math.cos(t + i) * 10
+            rect = surf.get_rect(center=(current_x + surf.get_width() // 2, cy + y_offset))
+            self.screen.blit(surf, rect)
+            current_x += surf.get_width()
+
     def draw_button(self, rect, text, color_normal, color_hover, mouse_pos):
         color = color_hover if rect.collidepoint(mouse_pos) else color_normal
         pygame.draw.rect(self.screen, color, rect, border_radius=15)
@@ -185,7 +223,7 @@ class Menu:
                 btn_text = "REPRENDRE"
                 btn_quit_text = "MENU PRINCIPAL"
             else:
-                self.draw_text("SMILE",    self.titre_font, RED, cx, 320)
+                self.draw_rainbow_bouncy_text("SMILE", self.smile_font, cx, 300)
                 btn_text = "JOUER"
                 btn_quit_text = "QUITTER"
             self.draw_button(self.btn_play,     btn_text,     BLUE_MENU, BLUE_HOVER, mouse_pos)
