@@ -462,21 +462,21 @@ class Game:
                         self.pnj_boss_pos = pos
                         if self.boss_glace_dead:
                             msg = "Bravo, tu as vaincu le boss !|Je te téléporte à la porte suivante."
-                            npc = NPC(pos, msg, [self.visibles_sprites, self.npc_sprites], on_end_callback=self.teleport_from_boss)
+                            npc = NPC(pos, msg, [self.visibles_sprites, self.npc_sprites], on_end_callback=self.teleport_from_boss, name=getattr(obj, 'name', None), pnj_type=obj_type_lower)
                     else:
                         if not self.boss_glace_dead:
                             msg = "Attention au boss de glace !"
-                            NPC(pos, msg, [self.visibles_sprites, self.npc_sprites])
+                            NPC(pos, msg, [self.visibles_sprites, self.npc_sprites], name=getattr(obj, 'name', None), pnj_type=obj_type_lower)
                 elif obj_type_lower == 'pnjporteglace':
                     self.spawn_porte_glace_point = pos
                     if self.boss_glace_dead:
                         msg = "Le boss est mort !|La porte est maintenant ouverte."
                     else:
                         msg = "La porte est fermée...|Il faut d'abord vaincre le boss de glace."
-                    NPC(pos, msg, [self.visibles_sprites, self.npc_sprites])
+                    NPC(pos, msg, [self.visibles_sprites, self.npc_sprites], name=getattr(obj, 'name', None), pnj_type=obj_type_lower)
                 elif obj_type_lower == 'npc':
                     msg = obj.properties.get('message', 'Bonjour !')
-                    NPC(pos, msg, [self.visibles_sprites, self.npc_sprites])
+                    NPC(pos, msg, [self.visibles_sprites, self.npc_sprites], name=getattr(obj, 'name', None), pnj_type=obj_type_lower)
                 elif obj_type_lower in ('portetolave', 'porte_to_lave', 'portebossglace', 'porteglace', 'porte_to_glace', 'porte_to_zone_1', 'porte_to zone_1', 'porte_boss_lave'):
                     if obj_type_lower in ('portetolave', 'porte_to_lave'):
                         dest = 'assets/maps/ZoneLave.tmx'

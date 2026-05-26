@@ -805,16 +805,21 @@ class GoblinArcher(BaseEnemy):
         d = 1 if player.rect.centerx > self.rect.centerx else -1
         self.facing_right = (d == 1)
 
+        is_moving = False
         if self.state == self.ST_WANDER:
             self._do_wander(obstacles)
+            is_moving = True
         elif self.state == self.ST_RETURN:
             if self._do_return_to_spawn(obstacles): self.state = self.ST_WANDER
+            is_moving = True
         elif self.state in (self.ST_POSITION, self.ST_SHOOT):
             # Essayer de maintenir la distance préférée
             if dist > self.PREFERRED_DIST + 40:
                 self._try_move(d * self.SPEED, obstacles)
+                is_moving = True
             elif dist < self.PREFERRED_DIST - 40:
                 self._try_move(-d * self.SPEED, obstacles)
+                is_moving = True
             
             # Tirer une flèche dès que possible
             if self.shoot_timer == 0:
@@ -827,6 +832,7 @@ class GoblinArcher(BaseEnemy):
                 self.animator.frame_index = 0
         elif self.state == self.ST_RETREAT:
             self._try_move(-d * self.SPEED * 2, obstacles)
+            is_moving = True
             
             # Tirer aussi en reculant si le tir est prêt
             if self.shoot_timer == 0:
@@ -855,10 +861,10 @@ class GoblinArcher(BaseEnemy):
         elif self.animator.current_state == "shoot" and self.animator.frame_index < len(self.animator.animations.get("shoot", [])) - 1:
             anim_state = "shoot"
             loop = False
-        elif self.state == self.ST_SHOOT:
-            anim_state = "idle"
-        elif self.state in (self.ST_POSITION, self.ST_RETREAT, self.ST_WANDER, self.ST_RETURN):
+        elif is_moving:
             anim_state = "wander"
+        else:
+            anim_state = "idle"
 
         self.image, _ = self._get_anim_frame(anim_state, loop=loop)
 
