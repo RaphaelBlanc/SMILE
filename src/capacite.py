@@ -112,7 +112,12 @@ class Capacite:
 
     def dash(self, obstacles, dash_key=pygame.K_v):
         current_time = pygame.time.get_ticks()
-        keys         = pygame.key.get_pressed()
+        if getattr(self.player, 'input_locked', False):
+            class EmptyKeys:
+                def __getitem__(self, item): return False
+            keys = EmptyKeys()
+        else:
+            keys = pygame.key.get_pressed()
 
         if keys[dash_key] and (current_time - self.last_dash_time > 1000):
             if hasattr(self.player, 'sound_manager'):
@@ -127,7 +132,12 @@ class Capacite:
             self.last_dash_time     = current_time
 
     def bdf(self, attack_key=pygame.K_f):
-        keys         = pygame.key.get_pressed()
+        if getattr(self.player, 'input_locked', False):
+            class EmptyKeys:
+                def __getitem__(self, item): return False
+            keys = EmptyKeys()
+        else:
+            keys = pygame.key.get_pressed()
         current_time = pygame.time.get_ticks()
 
         # Vérifie si le cooldown (500ms) est passé
