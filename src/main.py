@@ -316,9 +316,11 @@ class Game:
         # --- ETATS DE QUETE ---
         self.boss_glace_dead = False
         self.coming_from_boss = False
+        self.coming_from_glace = False
         self.coming_from_teleport = False
         self.spawn_from_boss_point = None
         self.spawn_porte_glace_point = None
+        self.spawn_from_glace_point = None
         self.pnj_boss_pos = None
 
         # Joueur local initial (sera repositionné par load_map)
@@ -407,13 +409,15 @@ class Game:
 
                 obj_type_lower = obj_type.lower() if obj_type else ''
 
-                if obj_type_lower == 'spawnjoueur':
+                if obj_type_lower in ('spawnjoueur', 'spawn_lave'):
                     player_spawn = pos
                 elif obj_type_lower == 'spawnjoueurboss':
                     self.zone_boss_respawn_point = pos
                     self.zone_boss_map = self.current_map_name
-                elif obj_type_lower == 'spawn_from_boss':
+                elif obj_type_lower in ('spawn_from_boss', 'spawn_form_boss'):
                     self.spawn_from_boss_point = pos
+                elif obj_type_lower == 'spawn_from_glace':
+                    self.spawn_from_glace_point = (pos[0] - 150, pos[1])
                 elif obj_type_lower in ('pnj_boss', 'pnjboss'):
                     if "map_boss_glace" in map_file:
                         self.pnj_boss_pos = pos
@@ -434,11 +438,19 @@ class Game:
                 elif obj_type_lower == 'npc':
                     msg = obj.properties.get('message', 'Bonjour !')
                     NPC(pos, msg, [self.visibles_sprites, self.npc_sprites])
-                elif obj_type_lower in ('portetolave', 'portebossglace', 'porteglace', 'porte_to_glace'):
-                    dest = 'assets/maps/map1.tmx' if obj_type_lower == 'portetolave' else \
-                           'assets/maps/map_boss_glace.tmx' if obj_type_lower == 'portebossglace' else \
-                           'assets/maps/map_glace.tmx' if obj_type_lower == 'porte_to_glace' else \
-                           'assets/maps/map_finale.tmx'
+                elif obj_type_lower in ('portetolave', 'porte_to_lave', 'portebossglace', 'porteglace', 'porte_to_glace', 'porte_to_zone_1', 'porte_to zone_1', 'porte_boss_lave'):
+                    if obj_type_lower in ('portetolave', 'porte_to_lave'):
+                        dest = 'assets/maps/ZoneLave.tmx'
+                    elif obj_type_lower == 'portebossglace':
+                        dest = 'assets/maps/map_boss_glace.tmx'
+                    elif obj_type_lower in ('porteglace', 'porte_to_glace'):
+                        dest = 'assets/maps/map_glace.tmx'
+                    elif obj_type_lower in ('porte_to_zone_1', 'porte_to zone_1'):
+                        dest = 'assets/maps/map_zone_1.tmx'
+                    elif obj_type_lower == 'porte_boss_lave':
+                        dest = 'assets/maps/map_boss_lave.tmx'
+                    else:
+                        dest = 'assets/maps/map_finale.tmx'
                     
                     if obj_type_lower == 'porte_to_glace' and player_spawn == (200, 200):
                         player_spawn = pos
@@ -467,6 +479,9 @@ class Game:
         elif self.coming_from_boss and self.spawn_from_boss_point:
             self.player.set_position(self.spawn_from_boss_point)
             self.respawn_point = self.spawn_from_boss_point
+        elif self.coming_from_glace and self.spawn_from_glace_point:
+            self.player.set_position(self.spawn_from_glace_point)
+            self.respawn_point = self.spawn_from_glace_point
         elif self.coming_from_teleport and hasattr(self, 'spawn_porte_glace_point'):
             tp_pos = (self.spawn_porte_glace_point[0] - 50, self.spawn_porte_glace_point[1])
             self.player.set_position(tp_pos)
@@ -477,7 +492,14 @@ class Game:
             
         self.killed_by_boss = False
         self.coming_from_boss = False
+        self.coming_from_glace = False
         self.coming_from_teleport = False
+        
+        # Snap camera to player immediately to avoid panning from (0,0)
+        target_x = self.player.rect.centerx - SCREEN_WIDTH // 2
+        target_y = self.player.rect.centery - SCREEN_HEIGHT // 2
+        self.camera.offset.x = max(0, min(target_x, self.camera.map_width - SCREEN_WIDTH))
+        self.camera.offset.y = max(0, min(target_y, self.camera.map_height - SCREEN_HEIGHT))
 
     def teleport_from_boss(self):
         self.coming_from_teleport = True
@@ -778,10 +800,10 @@ class Game:
             for door in self.doors:
                 # On agrandit virtuellement la hitbox de la porte pour le hint (pour qu'il apparaisse un peu avant)
                 if self.player.hitbox.colliderect(door['rect'].inflate(64, 64)):
-                    self.dialogue_box.show("Appuyez sur [F] pour entrer")
+                    self.dialogue_box.show("Appuyez sur [E] pour entrer")
                     break
             else:
-                if self.dialogue_box.text == "Appuyez sur [F] pour entrer":
+                if self.dialogue_box.text == "Appuyez sur [E] pour entrer":
                     self.dialogue_box.hide()
 
             # Camera
@@ -1059,20 +1081,22 @@ class Game:
 
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_e:
                     if not self.is_paused and self.player.hp_current > 0:
+                        # Interaction PNJ
                         for npc in self.npc_sprites:
                             if hasattr(npc, 'interact'):
                                 npc.interact()
-
-                if event.type == pygame.KEYDOWN and event.key == pygame.K_f:
-                    if not self.is_paused and self.player.hp_current > 0:
+                        
+                        # Interaction Portes
                         for door in self.doors:
                             if self.player.hitbox.colliderect(door['rect'].inflate(64, 64)):
-                                if door['type'] in ('porteglace', 'porte_to_glace') and not self.boss_glace_dead:
+                                if door['type'] in ('porteglace', 'porte_to_glace') and 'boss' in self.current_map_name and not self.boss_glace_dead:
                                     self.dialogue_box.show("La porte est verrouillée...", owner=None)
                                     break
                                 
-                                if door['type'] == 'porte_to_glace':
+                                if 'boss' in self.current_map_name:
                                     self.coming_from_boss = True
+                                elif 'glace' in self.current_map_name:
+                                    self.coming_from_glace = True
                                 self.load_map(door['dest'])
                                 break
 
