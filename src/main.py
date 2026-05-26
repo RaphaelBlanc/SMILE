@@ -861,6 +861,15 @@ class Game:
             self.player.player_num = 2
             self.player.load_assets()
             self.remote_player = RemotePlayer(self.player.rect.topleft, player_num=1)
+            
+            # Réinitialisation pour forcer la synchronisation avec le host
+            self.current_map_name = ""
+            self.killed_mobs.clear()
+            self.boss_glace_dead = False
+            self.boss_lave_dead = False
+            self.score = 0
+            self.kill_count = 0
+            self.play_time = 0.0
         else:
             self.player.player_num = 1
             self.player.load_assets()
