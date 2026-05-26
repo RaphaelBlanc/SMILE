@@ -14,7 +14,7 @@ from npc import DialogueBox
 from network import Network
 from boss import Glacius
 from monstre import (
-    ChienEnrage, GoblinMelee, GoblinArcher,
+    ChienEnrage, GoblinMelee, GoblinArcher, GoblinLancier,
     EspritFeu, EspritGlace, EspritFoudre, EspritNature,
     GolemPierre,
 )
@@ -50,18 +50,20 @@ HP_MAX       = 100
 # Correspondance type Tiled → classe Python (Hugo)
 MOB_CLASSES = {
     "ChienEnrage":  ChienEnrage,  "GoblinMelee":  GoblinMelee,
-    "GoblinArcher": GoblinArcher, "EspritFeu":    EspritFeu,
-    "EspritGlace":  EspritGlace,  "EspritFoudre": EspritFoudre,
-    "EspritNature": EspritNature, "GolemPierre":  GolemPierre,
+    "GoblinArcher": GoblinArcher, "GoblinLancier": GoblinLancier, 
+    "EspritFeu":    EspritFeu,    "EspritGlace":  EspritGlace,  
+    "EspritFoudre": EspritFoudre, "EspritNature": EspritNature, 
+    "GolemPierre":  GolemPierre,
 }
 MOB_COLORS = {
     "ChienEnrage": (180,90,30),   "GoblinMelee":  (60,160,60),
-    "GoblinArcher":(60,200,100),  "EspritFeu":    (255,100,0),
-    "EspritGlace": (80,180,255),  "EspritFoudre": (220,255,0),
-    "EspritNature":(30,200,80),   "GolemPierre":  (140,130,120),
+    "GoblinArcher":(60,200,100),  "GoblinLancier":(50,150,50),
+    "EspritFeu":    (255,100,0),  "EspritGlace": (80,180,255),  
+    "EspritFoudre": (220,255,0),  "EspritNature":(30,200,80),   
+    "GolemPierre":  (140,130,120),
 }
 MOB_XP = {
-    "ChienEnrage":20, "GoblinMelee":30, "GoblinArcher":40,
+    "ChienEnrage":20, "GoblinMelee":30, "GoblinArcher":40, "GoblinLancier": 35,
     "EspritFeu":35,   "EspritGlace":35, "EspritFoudre":45,
     "EspritNature":30,"GolemPierre":100,
 }
@@ -242,7 +244,7 @@ class Game:
     def __init__(self, screen=None, clock=None):
         if screen is None:
             pygame.init()
-            self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+            self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.FULLSCREEN | pygame.SCALED)
             pygame.display.set_caption("SMILE")
             self.clock  = pygame.time.Clock()
         else:
@@ -592,7 +594,14 @@ class Game:
 
     def _spawn_mob(self, obj_type, pos):
         groups    = [self.monster_sprites]
+        # On vérifie si la classe existe dans notre dictionnaire
+        if obj_type not in MOB_CLASSES:
+            print(f"ATTENTION : Classe '{obj_type}' non trouvée !")
+            return None
+            
         mob_class = MOB_CLASSES[obj_type]
+        
+        # Gestion spéciale pour l'Archer (besoin des arrow_groups)
         if obj_type == "GoblinArcher":
             mob = mob_class(pos, groups, arrow_groups=[self.enemy_proj_sprites])
         elif obj_type == "GolemPierre":
@@ -601,12 +610,12 @@ class Game:
             mob = mob_class(pos, groups, vfx_groups=[self.vfx_sprites])
         else:
             mob = mob_class(pos, groups)
-        mob.sound_manager = getattr(self, 'sound_manager', None)
+            
         mob.id = self.mob_counter
         self.mob_counter += 1
         return mob
 
-    # ── Respawn / Game Over ───────────────────────────────────────
+# ── Respawn / Game Over ───────────────────────────────────────
 
     def _respawn(self):
         """Réinitialise le joueur au dernier point de respawn."""
@@ -631,48 +640,21 @@ class Game:
         self.menu_input_blocked = 10   # ignore les clics pendant 10 frames
 
     # ── Update ────────────────────────────────────────────────────
-
     def update(self, dt):
         if self.menu_input_blocked > 0:
             self.menu_input_blocked -= 1
+        
         if not self.is_paused:
-            if self.is_multi and self.network:
-                # Initialise le timer de message si pas encore fait
-                if getattr(self, 'last_msg_time', 0) == 0:
-                    self.last_msg_time = pygame.time.get_ticks()
-                
-                # Déconnexion par timeout (3 secondes sans message)
-                if pygame.time.get_ticks() - self.last_msg_time > 3000:
-                    self.network.connected = False
-
-                if not self.network.connected:
-                    print("Déconnexion détectée, retour au menu...")
-                    self.is_multi = False
-                    self.game_started = False
-                    self.is_paused = True
-                    self.menu.state = "main"
-                    self.network = None
-                    self.last_msg_time = 0
-                    return
-
-            # Réseau
-            if self.is_multi:
-                self._network_update(dt)
-
-            # Joueur local (le client ne contrôle son perso que si rôle client,
-            # le host contrôle le sien normalement)
+            # 1. Mise à jour du joueur
             if self.player.hp_current > 0:
-                # En mode client on laisse quand même le joueur se mettre à jour
-                # visuellement (la position sera écrasée par l'état réseau)
                 self.player.update(self.obstacle_sprites, self.ladder_sprites, dt)
 
-            # NPC
+            # 2. Mise à jour des PNJs
             for npc in self.npc_sprites:
                 npc.update(self.player.rect, self.dialogue_box)
 
-            # Portes (Hint)
+            # 3. Gestion des interactions portes
             for door in self.doors:
-                # On agrandit virtuellement la hitbox de la porte pour le hint (pour qu'il apparaisse un peu avant)
                 if self.player.hitbox.colliderect(door['rect'].inflate(64, 64)):
                     self.dialogue_box.show("Appuyez sur [F] pour entrer")
                     break
@@ -680,100 +662,73 @@ class Game:
                 if self.dialogue_box.text == "Appuyez sur [F] pour entrer":
                     self.dialogue_box.hide()
 
-            # Camera
+            # 4. Mise à jour caméra
             self.camera.update(self.player.rect)
 
-            # Monstres
+            # 5. --- CORRECTION : MISE A JOUR DES PROJECTILES ENNEMIS ---
+            # Si cette ligne manque, les flèches apparaissent mais restent bloquées
+            self.enemy_proj_sprites.update(self.obstacle_sprites)
+
+            # 6. Mise à jour des monstres
             for m in list(self.monster_sprites):
-                if not self.is_multi or self.network.role == "host":
-                    if hasattr(m, 'attack_state'):
-                        m.update(self.player.rect, dt)
-                    else:
-                        m.update(self.player, self.obstacle_sprites)
-                else:
-                    if getattr(m, 'contact_timer', 0) > 0:
-                        m.contact_timer -= 1
+                if hasattr(m, 'attack_state'): # Cas du Boss
+                    m.update(self.player.rect, dt)
+                else: # Cas des monstres classiques
+                    m.update(self.player, self.obstacle_sprites)
 
-                if hasattr(m, 'heal_allies'):
-                    m.heal_allies(self.monster_sprites)
-
-                if m.rect.colliderect(self.player.hitbox) and self.player.hp_current > 0:
+                # --- COLLISION HITBOX VS HITBOX (Combat précis) ---
+                if hasattr(m, 'hitbox') and m.hitbox.colliderect(self.player.hitbox) and self.player.hp_current > 0:
                     if getattr(m, 'contact_timer', 0) <= 0:
                         self.player.take_damage(getattr(m, 'ATTACK_DAMAGE', 10))
                         m.contact_timer = getattr(m, 'CONTACT_COOLDOWN', 60)
                         if self.player.hp_current <= 0:
                             self.killed_by_boss = ('Boss' in type(m).__name__ or hasattr(m, 'attack_state'))
 
+                # Gestion dégâts boss/projectiles spécifiques
                 if hasattr(m, 'attack_state'):
-                    # Collision pour les projectiles et ondes de choc internes du boss
                     for p in m.projectiles:
-                        if p.rect.colliderect(self.player.hitbox) and self.player.hp_current > 0:
+                        if p.hitbox.colliderect(self.player.hitbox) and self.player.hp_current > 0:
                             self.player.take_damage(15)
                             p.kill()
-                            if self.player.hp_current <= 0:
-                                self.killed_by_boss = True
                     for sw in m.shockwaves:
                         if sw.rect.colliderect(self.player.hitbox) and self.player.hp_current > 0:
-                            if getattr(sw, 'hit_player', False) == False:
+                            if not getattr(sw, 'hit_player', False):
                                 self.player.take_damage(20)
                                 sw.hit_player = True
-                                if self.player.hp_current <= 0:
-                                    self.killed_by_boss = True
-                    for h in m.hazards:
-                        if h.rect.colliderect(self.player.hitbox) and self.player.hp_current > 0:
-                            self.player.take_damage(1) # dégâts continus légers
-                            if self.player.hp_current <= 0:
-                                self.killed_by_boss = True
 
+                # Suppression monstres morts
                 if getattr(m, 'dead', False) or (hasattr(m, 'alive') and not m.alive):
                     mob_type = type(m).__name__
                     self.score      += MOB_XP.get(mob_type, 10)
                     self.kill_count += 1
-                    color = MOB_COLORS.get(mob_type, WHITE)
+                    # Particules de mort
                     for _ in range(16):
-                        self.particles.append(
-                            Particle(m.rect.centerx, m.rect.centery, color))
-                    
-                    if hasattr(m, 'attack_state') and mob_type == 'Glacius':
-                        self.boss_glace_dead = True
-                        self.boss_death_pos = (m.rect.centerx, m.rect.bottom - 64)
-                        msg = "Bravo, tu as vaincu le boss !|Je te téléporte à la porte suivante."
-                        npc = NPC(self.boss_death_pos, msg, [self.visibles_sprites, self.npc_sprites], on_end_callback=self.teleport_from_boss)
-                    else:
-                        if hasattr(m, 'spawn_pos'):
-                            self.killed_mobs.add((self.current_map_name, m.spawn_pos))
-                            
+                        self.particles.append(Particle(m.rect.centerx, m.rect.centery, MOB_COLORS.get(mob_type, WHITE)))
+                    if hasattr(m, 'spawn_pos'):
+                        self.killed_mobs.add((self.current_map_name, m.spawn_pos))
                     m.kill()
 
-            # Projectiles joueur → monstres
+            # 7. Collisions Projectiles Joueur -> Monstres
             for proj in list(self.player.capacite.projectiles):
                 for m in list(self.monster_sprites):
-                    is_dead = getattr(m, 'dead', False) or not getattr(m, 'alive', True)
-                    if not is_dead and proj.rect.colliderect(m.rect):
+                    if not getattr(m, 'dead', False) and hasattr(m, 'hitbox') and proj.rect.colliderect(m.hitbox):
                         proj.kill()
-                        if not self.is_multi or self.network.role == "host":
-                            m.take_damage(20)
-                        elif self.network.role == "client":
-                            if self.network:
-                                self.network._send({"action": "damage_mob", "mob_id": getattr(m, 'id', -1), "amount": 20})
+                        m.take_damage(20)
                         break
 
-            # Projectiles ennemis → joueur
+            # 8. Collisions Projectiles Ennemis -> Joueur
             for ep in list(self.enemy_proj_sprites):
-                if ep.rect.colliderect(self.player.hitbox) and self.player.hp_current > 0:
+                # Utilise la hitbox si disponible pour éviter les blocages bizarres
+                ep_box = ep.hitbox if hasattr(ep, 'hitbox') else ep.rect
+                if ep_box.colliderect(self.player.hitbox) and self.player.hp_current > 0:
                     self.player.take_damage(getattr(ep, 'damage', 10))
                     ep.kill()
-                    if type(ep).__name__ == "BossProjectile":
-                        self.killed_by_boss = True
-                    else:
-                        self.killed_by_boss = False
 
-            # VFX + particules
+            # 9. Effets visuels
             self.vfx_sprites.update()
             for p in self.particles:
                 p.update()
             self.particles = [p for p in self.particles if p.life > 0]
-
     # ── Draw ──────────────────────────────────────────────────────
 
     def draw_health_bar(self):
@@ -984,7 +939,8 @@ class Game:
                         else:
                             self.menu.state = "mode_selection"
 
-                    elif action == "play_story":
+                    # --- CORRECTION DU BOUTON JOUER ---
+                    elif action in ("play_story", "play", "jouer", "start", "solo"):
                         print("Mode Histoire lancé !")
                         self.game_started = True
                         self.is_paused    = False
@@ -1030,7 +986,7 @@ class Game:
 
 if __name__ == '__main__':
     pygame.init()
-    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.FULLSCREEN | pygame.SCALED)
     pygame.display.set_caption("SMILE")
     clock  = pygame.time.Clock()
 
