@@ -14,7 +14,7 @@ from menu import Menu
 from npc import NPC
 from npc import DialogueBox
 from network import Network
-from boss import Glacius
+from boss import Glacius, Pyros
 from monstre import (
     ChienEnrage, GoblinMelee, GoblinArcher,
     EspritFeu, EspritGlace, EspritFoudre, EspritNature,
@@ -315,6 +315,7 @@ class Game:
         
         # --- ETATS DE QUETE ---
         self.boss_glace_dead = False
+        self.boss_lave_dead = False
         self.coming_from_boss = False
         self.coming_from_glace = False
         self.coming_from_lave = False
@@ -432,7 +433,7 @@ class Game:
 
                 obj_type_lower = obj_type.lower() if obj_type else ''
 
-                if obj_type_lower in ('spawnjoueur', 'spawn_lave', 'spawn_depart'):
+                if obj_type_lower in ('spawnjoueur', 'spawn_lave', 'spawn_depart', 'spawn_joueur_boss_lave'):
                     player_spawn = pos
                 elif obj_type_lower == 'spawnjoueurboss':
                     self.zone_boss_respawn_point = pos
@@ -477,7 +478,7 @@ class Game:
                     elif obj_type_lower in ('porte_to_zone_1', 'porte_to zone_1'):
                         dest = 'assets/maps/Zone1.tmx'
                     elif obj_type_lower == 'porte_boss_lave':
-                        dest = 'assets/maps/map_boss_lave.tmx'
+                        dest = 'assets/maps/BossLave.tmx'
                     else:
                         dest = 'assets/maps/map_finale.tmx'
                     
@@ -490,6 +491,15 @@ class Game:
                         floor_y = pos[1] + getattr(obj, 'height', 32)
                         boss = Glacius(pos, self.obstacle_sprites, floor_y)
                         self.monster_sprites.add(boss)
+                elif obj_type_lower == 'spawn_boss_lave':
+                    if not self.boss_lave_dead:
+                        floor_y = pos[1] + getattr(obj, 'height', 32)
+                        boss = Pyros(pos, self.obstacle_sprites, floor_y)
+                        self.monster_sprites.add(boss)
+                    else:
+                        self.pnj_boss_pos = pos
+                        msg = "Le gardien de la lave est vaincu.|Je te téléporte hors d'ici."
+                        npc = NPC(pos, msg, [self.visibles_sprites, self.npc_sprites], on_end_callback=self.teleport_from_boss_lave)
                 elif obj_type in MOB_CLASSES:
                     if (self.current_map_name, pos) not in self.killed_mobs:
                         mob = self._spawn_mob(obj_type, pos)
@@ -538,6 +548,10 @@ class Game:
         self.coming_from_teleport = True
         self.load_map('assets/maps/map_glace.tmx')
 
+    def teleport_from_boss_lave(self):
+        self.coming_from_teleport = True
+        self.load_map('assets/maps/ZoneLave.tmx')
+
     def load_game(self, slot):
         self.current_save_slot = slot
         filename = f"save_{slot}.json"
@@ -552,6 +566,7 @@ class Game:
                 self.score = data.get('score', 0)
                 self.kill_count = data.get('kill_count', 0)
                 self.boss_glace_dead = data.get('boss_glace_dead', False)
+                self.boss_lave_dead = data.get('boss_lave_dead', False)
                 
                 # Killed mobs - convert back to set of tuples
                 killed = data.get('killed_mobs', [])
@@ -581,6 +596,7 @@ class Game:
             self.score = 0
             self.kill_count = 0
             self.boss_glace_dead = False
+            self.boss_lave_dead = False
             self.killed_mobs.clear()
             self.load_map('assets/maps/Surface.tmx')
             self.player.hp_current = 100
@@ -606,6 +622,7 @@ class Game:
             'score': self.score,
             'kill_count': self.kill_count,
             'boss_glace_dead': self.boss_glace_dead,
+            'boss_lave_dead': self.boss_lave_dead,
             'killed_mobs': killed_list
         }
         
@@ -905,6 +922,11 @@ class Game:
                         self.boss_death_pos = (m.rect.centerx, m.rect.bottom - 64)
                         msg = "Bravo, tu as vaincu le boss !|Je te téléporte à la porte suivante."
                         npc = NPC(self.boss_death_pos, msg, [self.visibles_sprites, self.npc_sprites], on_end_callback=self.teleport_from_boss)
+                    elif hasattr(m, 'attack_state') and mob_type == 'Pyros':
+                        self.boss_lave_dead = True
+                        self.boss_death_pos = (m.rect.centerx, m.rect.bottom - 64)
+                        msg = "Bravo, tu as vaincu le gardien de la lave !|Je te téléporte hors d'ici."
+                        npc = NPC(self.boss_death_pos, msg, [self.visibles_sprites, self.npc_sprites], on_end_callback=self.teleport_from_boss_lave)
                     else:
                         if hasattr(m, 'spawn_pos'):
                             self.killed_mobs.add((self.current_map_name, m.spawn_pos))
