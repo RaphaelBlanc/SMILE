@@ -363,7 +363,80 @@ class IntroVideo:
             except Exception:
                 pass
 
-#CLASS GAME#########################################################################
+CREDITS_TEXT = [
+    "DIRECTION & PRODUCTION",
+    "",
+    "Réalisateur & Concepteur Principal : Horagle",
+    "Producteur Exécutif : Raphael Blanc--Alcaix",
+    "Directeur Artistique : Oceane Jordan",
+    "Scénariste Principal : Hugo Birard",
+    "",
+    "DESIGN DE JEU (GAME DESIGN)",
+    "",
+    "Lead Game Designer : Guilhem Fourrey",
+    "System Designer (Équilibrage de la Magie) : Raphael Blanc--Alcaix",
+    "Level Designer (Création des Donjons & Châteaux) : Alexandre Fillaquier",
+    "Combat Designer (Mécaniques du Mage) : Guilhem Fourrey",
+    "",
+    "PROGRAMMATION & TECHNIQUE",
+    "",
+    "Directeur Technique : Raphael Blanc--Alcaix",
+    "Développeur Moteur & Gameplay : Hugo Birard",
+    "Programmation de l'Interface : Oceane Jordan",
+    "Gestion des Effets de Lumière & LED : Alexandre Fillaquier",
+    "Optimisation & Stabilité : Guilhem Fourrey",
+    "",
+    "GRAPHISMES & ANIMATION",
+    "",
+    "Artiste Conceptuel (Concept Art) : Hugo Birard",
+    "Modélisation & Pixel Art du Mage : Guilhem Fourrey",
+    "Créateur du Ciel Étoilé & Décors : Guilhem Fourrey",
+    "Animateur des Effets Magiques : Hugo Birard",
+    "UI/UX Designer : Alexandre Fillaquier",
+    "",
+    "AUDIO & MUSIQUE",
+    "",
+    "Compositeur de la Bande Originale : Oceane Jordan",
+    "Concepteur Sonore (Sound Designer) : Oceane Jordan",
+    "Bruitages des Étoiles & Sorts Violet : Oceane Jordan",
+    "Ingénieur du Son : Oceane Jordan",
+    "",
+    "ASSURANCE QUALITÉ (TESTS)",
+    "",
+    "Responsable QA (Lead Tester) : Raphael Blanc--Alcaix",
+    "Chasseurs de Bugs Principaux : Raphael Blanc--Alcaix / Guilhem Fourrey",
+    "Équipe de Bêta-Testeurs : Raphael Blanc--Alcaix / Guilhem Fourrey",
+    "",
+    "SYNDICAT DES MAGECREUX",
+    "",
+    "Représentant en Chef : Raphael Blanc--Alcaix",
+    "Conseiller aux Affaires Occultes : Alexandre Fillaquier",
+    "Gardien des Archives : Hugo Birard",
+    "",
+    "REMERCIEMENTS SPÉCIAUX",
+    "",
+    "UN GRAND MERCI D'AVOIR JOUÉ !",
+    "Voyageur, vous êtes arrivé au bout du chemin.",
+    "Vous avez bravé l'obscurité, maîtrisé votre puissance,",
+    "et inscrit votre nom parmi les légendes.",
+    "Ce jeu a été conçu avec passion, caféine et une immense volonté",
+    "de vous offrir une aventure mémorable. Sans votre curiosité",
+    "et votre persévérance, ce monde n'aurait jamais pris vie.",
+    "Merci de faire partie de notre histoire.",
+    "",
+    "Un grand merci à Alix pour ses précieux conseils.",
+    "",
+    "LE MOT DE LA FIN",
+    "",
+    "Le récit s'achève... Merci de l'avoir vécu, valeureux mage.",
+    "Fin de l'aventure... En quête de nouvelles terres et de nouveaux mystères...",
+    "Que la magie continue de vous guider.",
+    "",
+    "LIBERTE QUOI YGALE",
+    "Tous droits réservés – 2026"
+]
+
+#CLASS GAME##########################################################################
 
 class Game:
 
@@ -381,12 +454,38 @@ class Game:
         self.font_hud   = pygame.font.SysFont("consolas", 18, bold=True)
         self.font_small = pygame.font.SysFont("consolas", 14)
         self.font_title = pygame.font.SysFont("consolas", 42, bold=True)
+        self.potion_font = pygame.font.SysFont("consolas", 24, bold=True)
+        
+        try:
+            self.potion_img = pygame.image.load(os.path.join(ROOT_DIR, "assets", "images", "potion.png")).convert_alpha()
+            self.potion_img = pygame.transform.scale(self.potion_img, (64, 64))
+        except:
+            self.potion_img = pygame.Surface((64, 64), pygame.SRCALPHA)
+            pygame.draw.rect(self.potion_img, (200, 0, 50), (16, 16, 32, 32), border_radius=8)
+            
+        self.is_end_game = False
+        self.end_game_timer = 0.0
+        self.show_credits = False
+        self.credits_scroll_y = SCREEN_HEIGHT
+        self.btn_credits = pygame.Rect(0, 0, 700, 70)
+        self.btn_credits.center = (SCREEN_WIDTH // 2, 930)  # Position approx du texte
+        self.credits_font_title = pygame.font.SysFont("consolas", 40, bold=True)
+        self.credits_font_text = pygame.font.SysFont("consolas", 28)
+        self.credits_finished = False
+        self.btn_end_menu = pygame.Rect(SCREEN_WIDTH - 300, SCREEN_HEIGHT - 100, 250, 60)
+
+        try:
+            self.designfin_img = pygame.image.load(os.path.join(ROOT_DIR, "assets", "images", "designfin.png")).convert_alpha()
+            self.designfin_img = pygame.transform.scale(self.designfin_img, (SCREEN_WIDTH, SCREEN_HEIGHT))
+        except:
+            self.designfin_img = None
 
         # --- ETATS DU JEU ---
         self.is_paused    = True
         self.game_started = False
         self.score        = 0
         self.kill_count   = 0
+        self.respawn_count = 0
         self.particles    = []
 
         # --- SAUVEGARDE ---
@@ -489,12 +588,44 @@ class Game:
         if zone_current and zone_current != zone_next:
             self.killed_mobs.clear()
             
+        # Reinitialise les potions
+        if "BossLave" in map_file or ("lave" in map_file.lower() and "boss" in map_file.lower()):
+            self.player.potions_max = 1
+        elif "glace" in map_file.lower() and "boss" in map_file.lower():
+            self.player.potions_max = 2
+        else:
+            self.player.potions_max = 3
+            
+        self.player.potions_current = self.player.potions_max
+        self.player.potion_primed = False
+            
         self.current_map_name = map_file
 
         if 'glace' in map_file:
             self.sound_manager.play_world_music('glace')
         elif 'map1' in map_file or 'lave' in map_file:
             self.sound_manager.play_world_music('feu')
+            
+        # Enregistrement du meilleur temps lorsqu'on atteint la map de fin
+        if "Fin" in map_file:
+            self.is_end_game = True
+            self.end_game_timer = 0.0
+            
+            filepath = os.path.join(ROOT_DIR, "best_time.json")
+            old_best = None
+            if os.path.exists(filepath):
+                try:
+                    with open(filepath, "r") as f:
+                        old_best = json.load(f).get("best_time")
+                except:
+                    pass
+            if old_best is None or getattr(self, 'play_time', 0.0) < old_best:
+                try:
+                    with open(filepath, "w") as f:
+                        json.dump({"best_time": getattr(self, 'play_time', 0.0)}, f)
+                    self.menu.load_best_time()
+                except:
+                    pass
         
         for s in self.visibles_sprites:
             if s != self.player and getattr(self, 'remote_player', None) != s:
@@ -786,6 +917,7 @@ class Game:
                 # Restore game state
                 self.score = data.get('score', 0)
                 self.kill_count = data.get('kill_count', 0)
+                self.respawn_count = data.get('respawn_count', 0)
                 
                 loaded_play_time = data.get('play_time', 0.0)
                 if is_same_slot and hasattr(self, 'play_time'):
@@ -823,6 +955,7 @@ class Game:
             # Start fresh
             self.score = 0
             self.kill_count = 0
+            self.respawn_count = 0
             self.play_time = 0.0
             self.boss_glace_dead = False
             self.boss_lave_dead = False
@@ -850,6 +983,7 @@ class Game:
             'player_hp': self.player.hp_current,
             'score': self.score,
             'kill_count': self.kill_count,
+            'respawn_count': self.respawn_count,
             'boss_glace_dead': self.boss_glace_dead,
             'boss_lave_dead': self.boss_lave_dead,
             'killed_mobs': killed_list,
@@ -1147,6 +1281,8 @@ class Game:
 
     def _respawn(self):
         """Réinitialise le joueur au dernier point de respawn."""
+        if getattr(self.player, 'hp_current', 0) <= 0:
+            self.respawn_count += 1
         self.death_time = None
         self.player.hp_current = self.player.hp_max
         self.player.vel_y = 0
@@ -1209,8 +1345,16 @@ class Game:
             self._network_update(dt)
 
         if not self.is_paused:
-            if getattr(self, 'game_started', False) and not self.boss_glace_dead and self.player.hp_current > 0:
+            if getattr(self, 'game_started', False) and "Fin" not in self.current_map_name and self.player.hp_current > 0:
                 self.play_time += dt * 1000.0
+                
+            if getattr(self, 'show_credits', False):
+                self.credits_scroll_y -= dt * 60.0
+                if self.credits_scroll_y < -3500:
+                    self.show_credits = False
+                    self.credits_finished = True
+            elif getattr(self, 'is_end_game', False):
+                self.end_game_timer += dt
 
             if self.game_started and self.current_save_slot:
                 if pygame.time.get_ticks() - self.last_save_time >= 120000:
@@ -1339,29 +1483,14 @@ class Game:
                     
                     if hasattr(m, 'attack_state') and mob_type == 'Glacius':
                         self.boss_glace_dead = True
+                        self.player.hp_current = self.player.hp_max
                         self.boss_death_pos = (m.rect.centerx, m.rect.bottom - 64)
-                        
-                        # Handle best time
-                        filepath = os.path.join(ROOT_DIR, "best_time.json")
-                        old_best = None
-                        if os.path.exists(filepath):
-                            try:
-                                with open(filepath, "r") as f:
-                                    old_best = json.load(f).get("best_time")
-                            except:
-                                pass
-                        if old_best is None or self.play_time < old_best:
-                            try:
-                                with open(filepath, "w") as f:
-                                    json.dump({"best_time": self.play_time}, f)
-                                self.menu.load_best_time()
-                            except:
-                                pass
                         
                         msg = "Bravo, tu as vaincu le boss !|Je te téléporte à la porte suivante."
                         npc = NPC(self.boss_death_pos, msg, [self.visibles_sprites, self.npc_sprites], on_end_callback=self.teleport_from_boss)
                     elif hasattr(m, 'attack_state') and mob_type == 'Pyros':
                         self.boss_lave_dead = True
+                        self.player.hp_current = self.player.hp_max
                         self.boss_death_pos = (m.rect.centerx, m.rect.bottom - 64)
                         msg = "Bravo, tu as vaincu le gardien de la lave !|Je te téléporte hors d'ici."
                         npc = NPC(self.boss_death_pos, msg, [self.visibles_sprites, self.npc_sprites], on_end_callback=self.teleport_from_boss_lave)
@@ -1431,12 +1560,24 @@ class Game:
         x, y  = 50, 50
         ratio = max(0, self.player.hp_current / self.player.hp_max)
         bar_w = self.player.health_bar_length
-        pygame.draw.rect(self.screen, RED,   (x, y, bar_w, 20))
-        pygame.draw.rect(self.screen, GREEN, (x, y, int(bar_w * ratio), 20))
-        pygame.draw.rect(self.screen, BLACK, (x, y, bar_w, 20), 3)
+        
+        # Fond et bordure
+        pygame.draw.rect(self.screen, (40, 40, 40), (x - 4, y - 4, bar_w + 8, 28), border_radius=6)
+        pygame.draw.rect(self.screen, (130, 0, 0), (x, y, bar_w, 20), border_radius=4)
+        
+        # Barre de vie
+        if ratio > 0:
+            pygame.draw.rect(self.screen, (0, 200, 50), (x, y, int(bar_w * ratio), 20), border_radius=4)
+            
+        # Texte PV sous la barre
+        hp_text = self.font_hud.render(f"Joueur 1 : {int(self.player.hp_current)} / {int(self.player.hp_max)} PV", True, WHITE)
+        hp_text_shadow = self.font_hud.render(f"Joueur 1 : {int(self.player.hp_current)} / {int(self.player.hp_max)} PV", True, BLACK)
+        text_rect = hp_text.get_rect(midleft=(x, y + 36))
+        self.screen.blit(hp_text_shadow, (text_rect.x + 1, text_rect.y + 1))
+        self.screen.blit(hp_text, text_rect)
 
     def draw_status_indicators(self):
-        y = 80
+        y = 90
         p = self.player
         if p.is_poisoned and p.poison_timer > 0:
             s = p.poison_timer // 60 + 1
@@ -1446,7 +1587,7 @@ class Game:
         if p.slow_timer > 0:
             s = p.slow_timer // 60 + 1
             self.screen.blit(
-                self.font_hud.render(f"RALENTI {s}s", True, (100, 180, 255)), (50, y))
+                self.font_hud.render(f"LENT {s}s", True, (0, 200, 255)), (50, y))
             y += 24
         if p.burn_timer > 0:
             s = p.burn_timer // 60 + 1
@@ -1455,17 +1596,27 @@ class Game:
 
     def draw_remote_health_bar(self):
         """Barre de vie du joueur distant (haut droite)."""
-        if self.remote_player is None:
+        if not getattr(self, 'remote_player', None):
             return
-        x = SCREEN_WIDTH - 250
+        x = SCREEN_WIDTH - 280
         y = 50
         ratio = max(0, self.remote_player.hp_current / self.remote_player.hp_max)
         bar_w = 200
-        pygame.draw.rect(self.screen, RED,            (x, y, bar_w, 20))
-        pygame.draw.rect(self.screen, (0, 200, 255),  (x, y, int(bar_w * ratio), 20))
-        pygame.draw.rect(self.screen, BLACK,           (x, y, bar_w, 20), 3)
-        lbl = self.font_small.render("P2", True, (0, 200, 255))
-        self.screen.blit(lbl, (x - 30, y))
+        
+        # Fond et bordure
+        pygame.draw.rect(self.screen, (40, 40, 40), (x - 4, y - 4, bar_w + 8, 28), border_radius=6)
+        pygame.draw.rect(self.screen, (130, 0, 0), (x, y, bar_w, 20), border_radius=4)
+        
+        # Barre de vie allié (bleu)
+        if ratio > 0:
+            pygame.draw.rect(self.screen, (0, 100, 255), (x, y, int(bar_w * ratio), 20), border_radius=4)
+            
+        # Texte PV allié sous la barre
+        hp_text = self.font_hud.render(f"Joueur 2 : {int(self.remote_player.hp_current)} / {int(self.remote_player.hp_max)} PV", True, WHITE)
+        hp_text_shadow = self.font_hud.render(f"Joueur 2 : {int(self.remote_player.hp_current)} / {int(self.remote_player.hp_max)} PV", True, BLACK)
+        text_rect = hp_text.get_rect(midleft=(x, y + 36))
+        self.screen.blit(hp_text_shadow, (text_rect.x + 1, text_rect.y + 1))
+        self.screen.blit(hp_text, text_rect)
 
     def draw(self, flip=True):
         if self.is_paused:
@@ -1505,6 +1656,27 @@ class Game:
                     pygame.draw.rect(self.screen, (0, 220, 0), (bx, by, int(bw * ratio), bh))
                     pygame.draw.rect(self.screen, BLACK,        (bx, by, bw, bh), 1)
 
+            is_boss_fight = any(hasattr(m, 'attack_state') for m in self.monster_sprites)
+            if is_boss_fight:
+                px = SCREEN_WIDTH - 120
+                py = SCREEN_HEIGHT - 120
+                
+                # Detour blanc si primé
+                if getattr(self.player, 'potion_primed', False):
+                    pygame.draw.rect(self.screen, WHITE, (px - 5, py - 5, 74, 74), 3, border_radius=5)
+                    text = self.potion_font.render(f"{self.player.potions_current} RESTANTES", True, WHITE)
+                    self.screen.blit(text, (px - text.get_width() // 2 + 32, py - 30))
+                
+                # Nombre si non primé mais visible
+                elif self.player.potions_current > 0:
+                    text = self.potion_font.render(f"x{self.player.potions_current}", True, WHITE)
+                    self.screen.blit(text, (px + 64, py + 32))
+                else:
+                    text = self.potion_font.render(f"0", True, RED)
+                    self.screen.blit(text, (px + 64, py + 32))
+                    
+                self.screen.blit(self.potion_img, (px, py))
+
             for vfx in self.vfx_sprites:
                 self.screen.blit(vfx.image, self.camera.apply(vfx.rect))
 
@@ -1541,7 +1713,7 @@ class Game:
                 self.draw_remote_health_bar()
 
             score_txt = self.font_hud.render(
-                f"Score : {self.score}   Kills : {self.kill_count}", True, WHITE)
+                f"Score : {self.score}   Kills : {self.kill_count}   Respawns : {self.respawn_count}", True, WHITE)
             self.screen.blit(score_txt, (SCREEN_WIDTH - score_txt.get_width() - 20, 20))
 
             if getattr(self, 'game_started', False):
@@ -1606,6 +1778,59 @@ class Game:
                 overlay.fill((0, 0, 0, 160))
                 self.screen.blit(overlay, (0, 0))
                 self.menu.draw(self.game_started, self.network)
+                
+            if getattr(self, 'show_credits', False):
+                # Affichage des crédits (texte qui défile)
+                y_offset = self.credits_scroll_y
+                for line in CREDITS_TEXT:
+                    if y_offset > -100 and y_offset < SCREEN_HEIGHT + 100:
+                        if line.isupper() and "MERCI" not in line and "YGALE" not in line:
+                            txt = self.credits_font_title.render(line, True, YELLOW)
+                        else:
+                            txt = self.credits_font_text.render(line, True, WHITE)
+                        self.screen.blit(txt, (SCREEN_WIDTH // 2 - txt.get_width() // 2, y_offset))
+                    y_offset += 45
+            elif getattr(self, 'is_end_game', False) and getattr(self, 'designfin_img', None):
+                alpha = min(255, int((self.end_game_timer / 10.0) * 255))
+                if alpha > 0:
+                    self.designfin_img.set_alpha(alpha)
+                    self.screen.blit(self.designfin_img, (0, 0))
+                    
+                    stat_font = pygame.font.SysFont("consolas", 40, bold=True)
+                    chrono_txt = stat_font.render(f"{format_time(self.play_time)}", True, WHITE)
+                    score_txt = stat_font.render(f"{self.score}", True, WHITE)
+                    kills_txt = stat_font.render(f"{self.kill_count}", True, WHITE)
+                    
+                    chrono_txt.set_alpha(alpha)
+                    score_txt.set_alpha(alpha)
+                    kills_txt.set_alpha(alpha)
+                    
+                    cx = SCREEN_WIDTH // 2
+                    cy_box = 690  # Descente légère des stats dans les encadrés
+                    
+                    # Espacement horizontal approximatif
+                    offset_x = 280
+                    
+                    self.screen.blit(chrono_txt, (cx - offset_x - chrono_txt.get_width() // 2, cy_box - chrono_txt.get_height() // 2))
+                    self.screen.blit(score_txt, (cx - score_txt.get_width() // 2, cy_box - score_txt.get_height() // 2))
+                    self.screen.blit(kills_txt, (cx + offset_x - kills_txt.get_width() // 2, cy_box - kills_txt.get_height() // 2))
+                    
+                    if alpha == 255:
+                        mouse_pos = pygame.mouse.get_pos()
+                        if not getattr(self, 'credits_finished', False):
+                            if self.btn_credits.collidepoint(mouse_pos):
+                                hover_surf = pygame.Surface((self.btn_credits.width, self.btn_credits.height), pygame.SRCALPHA)
+                                pygame.draw.rect(hover_surf, (255, 255, 255, 30), hover_surf.get_rect(), border_radius=10)
+                                self.screen.blit(hover_surf, self.btn_credits.topleft)
+                        else:
+                            btn_font = pygame.font.SysFont("consolas", 28, bold=True)
+                            btn_surf_m = pygame.Surface((self.btn_end_menu.width, self.btn_end_menu.height), pygame.SRCALPHA)
+                            color_m = (0, 120, 210, 255) if self.btn_end_menu.collidepoint(mouse_pos) else (0, 80, 160, 255)
+                            pygame.draw.rect(btn_surf_m, color_m, btn_surf_m.get_rect(), border_radius=14)
+                            pygame.draw.rect(btn_surf_m, WHITE, btn_surf_m.get_rect(), 3, border_radius=14)
+                            lbl_m = btn_font.render("MENU PRINCIPAL", True, WHITE)
+                            btn_surf_m.blit(lbl_m, lbl_m.get_rect(center=btn_surf_m.get_rect().center))
+                            self.screen.blit(btn_surf_m, self.btn_end_menu.topleft)
 
         if flip:
             pygame.display.flip()
@@ -1679,6 +1904,40 @@ class Game:
                                 else:
                                     self.load_map(door['dest'])
                                 break
+
+                # Potion
+                potion_key = self.player.keybinds.get("potion", pygame.K_r)
+                if event.type == pygame.KEYDOWN and event.key == potion_key:
+                    if not self.is_paused and self.player.hp_current > 0:
+                        is_boss_fight = any(hasattr(m, 'attack_state') for m in self.monster_sprites)
+                        if is_boss_fight:
+                            if self.player.potions_current > 0:
+                                if not self.player.potion_primed:
+                                    self.player.potion_primed = True
+                                else:
+                                    self.player.potion_primed = False
+                                    self.player.potions_current -= 1
+                                    self.player.hp_current = min(self.player.hp_max, self.player.hp_current + self.player.hp_max // 3)
+                                    if self.sound_manager:
+                                        try:
+                                            self.sound_manager.play("heal")
+                                        except:
+                                            pass
+
+                if getattr(self, 'is_end_game', False) and not getattr(self, 'show_credits', False):
+                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        if not getattr(self, 'credits_finished', False):
+                            if self.btn_credits.collidepoint(event.pos):
+                                self.show_credits = True
+                                if getattr(self, 'sound_manager', None):
+                                    try: self.sound_manager.play('clic')
+                                    except: pass
+                        else:
+                            if self.btn_end_menu.collidepoint(event.pos):
+                                if getattr(self, 'sound_manager', None):
+                                    try: self.sound_manager.play('clic')
+                                    except: pass
+                                self._go_to_main_menu()
 
                 # ── Boutons Game Over ───────────────────────────────
                 if (not self.is_paused
