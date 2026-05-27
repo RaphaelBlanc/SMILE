@@ -426,6 +426,7 @@ class Game:
         # --- GROUPES DE SPRITES ---
         self.visibles_sprites   = pygame.sprite.Group()
         self.obstacle_sprites   = pygame.sprite.Group()
+        self.plateforme_sprites = pygame.sprite.Group()
         self.npc_sprites        = pygame.sprite.Group()
         self.ladder_sprites     = pygame.sprite.Group()
         self.monster_sprites    = pygame.sprite.Group()
@@ -499,6 +500,7 @@ class Game:
             if s != self.player and getattr(self, 'remote_player', None) != s:
                 s.kill()
         self.obstacle_sprites.empty()
+        self.plateforme_sprites.empty()
         self.npc_sprites.empty()
         self.ladder_sprites.empty()
         self.monster_sprites.empty()
@@ -540,6 +542,13 @@ class Game:
                 Tile((x * 32, y * 32), surf, [self.obstacle_sprites])
 
         try:
+            for x, y, surf in tmx_data.get_layer_by_name('Plateforme').tiles():
+                if surf:
+                    Tile((x * 32, y * 32), surf, [self.plateforme_sprites])
+        except ValueError:
+            print("INFO : Calque 'Plateforme' introuvable.")
+
+        try:
             for x, y, surf in tmx_data.get_layer_by_name('Echelles').tiles():
                 Tile((x * 32, y * 32), surf, [self.ladder_sprites])
             print(f"INFO : {len(self.ladder_sprites)} tuile(s) d'echelle chargee(s).")
@@ -554,6 +563,8 @@ class Game:
             pass
 
         player_spawn = (200, 200)
+        self.spawn_host_point = None
+        self.spawn_client_point = None
         self.spawn_from_glace_point = None
         self.spawn_depuis_glace_point = None
         self.spawn_from_boss_point = None
@@ -574,6 +585,10 @@ class Game:
 
                 if obj_type_lower in ('spawnjoueur', 'spawn_lave', 'spawn_depart', 'spawn_joueur_boss_lave'):
                     player_spawn = pos
+                elif obj_type_lower == 'host':
+                    self.spawn_host_point = pos
+                elif obj_type_lower == 'client':
+                    self.spawn_client_point = pos
                 elif obj_type_lower == 'spawnjoueurboss':
                     self.zone_boss_respawn_point = pos
                     self.zone_boss_map = self.current_map_name
@@ -670,6 +685,12 @@ class Game:
             print("INFO : Calque 'Objets' introuvable — monstres non charges depuis Tiled.")
 
 
+
+        if map_file == 'assets/maps/PVP.tmx' and getattr(self, 'is_multi', False):
+            if self.player.player_num == 1 and getattr(self, 'spawn_host_point', None):
+                player_spawn = self.spawn_host_point
+            elif self.player.player_num == 2 and getattr(self, 'spawn_client_point', None):
+                player_spawn = self.spawn_client_point
 
         self.last_transition_flag = ""
         if self.killed_by_boss and hasattr(self, 'zone_boss_respawn_point'):
@@ -1198,7 +1219,7 @@ class Game:
             # En mode client on laisse quand même le joueur se mettre à jour
             # visuellement (la position sera écrasée par l'état réseau).
             # On le met toujours à jour pour qu'il puisse jouer son animation de mort s'il meurt.
-            self.player.update(self.obstacle_sprites, self.ladder_sprites, dt)
+            self.player.update(self.obstacle_sprites, self.ladder_sprites, self.plateforme_sprites, dt)
                 
             if self.is_multi and getattr(self, 'remote_player', None):
                 self.remote_player.update(dt)
@@ -1730,6 +1751,10 @@ class Game:
                         self._start_multi_as_client(code)
 
                     elif action == "launch_multi_coop":
+                        self._launch_multi_game()
+                        
+                    elif action == "launch_multi_pvp":
+                        self.load_map('assets/maps/PVP.tmx')
                         self._launch_multi_game()
                         
                     elif action == "disconnect_multi":

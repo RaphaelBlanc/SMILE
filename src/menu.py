@@ -647,7 +647,7 @@ class Menu:
                 if self.btn_multi_coop.collidepoint(event.pos):
                     return "launch_multi_coop"
                 if self.btn_multi_pvp.collidepoint(event.pos):
-                    pass # Ne fait rien pour l'instant
+                    return "launch_multi_pvp"
                 if self.btn_back_multi_mode.collidepoint(event.pos):
                     return "disconnect_multi"
 

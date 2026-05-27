@@ -234,13 +234,13 @@ class Player(pygame.sprite.Sprite):
     # UPDATE
     # -------------------------------------------------------------------------
 
-    def update(self, obstacles, ladder_sprites, dt):
+    def update(self, obstacles, ladder_sprites, plateforme_sprites, dt):
         
         if self.hp_current <= 0:
             self.status = 'death'
             self.direction.x = 0
             self.apply_gravity()
-            self.move(obstacles, ladder_sprites)
+            self.move(obstacles, ladder_sprites, plateforme_sprites)
             self.capacite.projectiles.update(obstacles)
         else:
             self.get_input(ladder_sprites)
@@ -274,7 +274,7 @@ class Player(pygame.sprite.Sprite):
                 self.apply_gravity()
 
             # Mouvement et Alignement de l'image
-            self.move(obstacles, ladder_sprites)
+            self.move(obstacles, ladder_sprites, plateforme_sprites)
 
         # Animation Vitesse
         if self.status and 'sprint' in self.status:
@@ -297,7 +297,7 @@ class Player(pygame.sprite.Sprite):
     # MOUVEMENT & COLLISION (Utilise la Hitbox)
     # -------------------------------------------------------------------------
 
-    def move(self, obstacles, ladder_sprites=None):
+    def move(self, obstacles, ladder_sprites=None, plateforme_sprites=None):
         effective_speed = self.current_speed * self.slow_factor
 
         # 1. Mouvement Horizontal de la HITBOX
@@ -306,7 +306,7 @@ class Player(pygame.sprite.Sprite):
 
         # 2. Mouvement Vertical de la HITBOX
         self.hitbox.y += self.direction.y
-        self.check_collision('vertical', obstacles, ladder_sprites)
+        self.check_collision('vertical', obstacles, ladder_sprites, plateforme_sprites)
         
         # 3. Alignement Visuel : On force le rect à prendre la taille exacte de l'image (225x225)
         self.rect = self.image.get_rect()
@@ -319,7 +319,7 @@ class Player(pygame.sprite.Sprite):
         offset_y = 80
         self.rect.y += offset_y
 
-    def check_collision(self, direction, obstacles, ladder_sprites=None):
+    def check_collision(self, direction, obstacles, ladder_sprites=None, plateforme_sprites=None):
         # On echange temporairement le rect et la hitbox pour Pygame
         temp_rect = self.rect
         self.rect = self.hitbox
@@ -339,6 +339,12 @@ class Player(pygame.sprite.Sprite):
             for l in ladder_hits:
                 if self.hitbox.bottom - self.direction.y <= l.rect.top + 15:
                     hits.append(l)
+
+        if plateforme_sprites and direction == 'vertical' and self.direction.y > 0 and not pressing_down:
+            plateforme_hits = pygame.sprite.spritecollide(self, plateforme_sprites, False)
+            for p in plateforme_hits:
+                if self.hitbox.bottom - self.direction.y <= p.rect.top + 15:
+                    hits.append(p)
 
         self.rect = temp_rect # On remet en place
 
