@@ -61,7 +61,7 @@ class GoblinMelee(BaseEnemy):
         self.vy           = 0
     def _load_animations(self):
         animations = {}
-        TARGET_SIZE = (160, 160)
+        TARGET_SIZE = (100, 100)
         path_option1 = os.path.join(CURRENT_DIR, "assets", "images", "monstre", "goblin_melee")
         path_option2 = os.path.join(os.path.dirname(CURRENT_DIR), "assets", "images", "monstre", "goblin_melee")
         sheet_dir = path_option1 if os.path.isdir(path_option1) else path_option2
@@ -268,7 +268,7 @@ class GoblinArcher(BaseEnemy):
         self.arrows       = pygame.sprite.Group()
     def _load_animations(self):
         animations = {}
-        TARGET_SIZE = (160, 160)
+        TARGET_SIZE = (100, 100)
         path_option1 = os.path.join(CURRENT_DIR, "assets", "images", "monstre", "goblin_archer")
         path_option2 = os.path.join(os.path.dirname(CURRENT_DIR), "assets", "images", "monstre", "goblin_archer")
         sheet_dir = path_option1 if os.path.isdir(path_option1) else path_option2
@@ -443,7 +443,7 @@ class GoblinLancier(BaseEnemy):
         self.vy             = 0
     def _load_animations(self):
         animations = {}
-        TARGET_SIZE = (160, 160)
+        TARGET_SIZE = (100, 100)
         path_option1 = os.path.join(CURRENT_DIR, "assets", "images", "monstre", "goblin_lancier")
         path_option2 = os.path.join(os.path.dirname(CURRENT_DIR), "assets", "images", "monstre", "goblin_lancier")
         sheet_dir = path_option1 if os.path.isdir(path_option1) else path_option2

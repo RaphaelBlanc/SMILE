@@ -104,6 +104,14 @@ class Game:
         self.shake_ref = [0]
         self.mob_counter = 0
         self.death_time = None
+        self.end_timer = None
+        self.end_time_triggered = None
+        try:
+            self.end_screen_img = pygame.image.load(os.path.join(ROOT_DIR, "assets", "images", "end_screen.png")).convert()
+            self.end_screen_img = pygame.transform.scale(self.end_screen_img, (SCREEN_WIDTH, SCREEN_HEIGHT))
+        except:
+            self.end_screen_img = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+            self.end_screen_img.fill((0, 200, 255))
         cx = SCREEN_WIDTH // 2
         cy = SCREEN_HEIGHT // 2
         self.btn_respawn = pygame.Rect(0, 0, 320, 75)
@@ -383,6 +391,13 @@ class Game:
             self.respawn_point = safe_pos
         else:
             self.last_transition_flag = "none"
+            if "Fin" in map_file or "Fin.tmx" in map_file:
+                self.end_timer = 30.0 * 60
+                from npc import NPC
+                NPC((player_spawn[0] - 150, player_spawn[1]), ["Tu as vaincu les ombres... Le royaume est purifie !"], [self.visibles_sprites, self.npc_sprites], name="Guide", pnj_type="guide")
+                NPC((player_spawn[0] + 150, player_spawn[1]), ["Merci mortel... Mon feu ne brulera plus d'innocents."], [self.visibles_sprites, self.npc_sprites], name="Pyros", pnj_type="pyros")
+                NPC((player_spawn[0] + 300, player_spawn[1]), ["La glace eternelle a fondu. Merci de nous avoir sauves !"], [self.visibles_sprites, self.npc_sprites], name="Glacius", pnj_type="glacius")
+
             self.player.set_position(player_spawn)
             self.respawn_point = player_spawn
         self.coming_from_boss = False
@@ -776,7 +791,14 @@ class Game:
                     self.player.load_assets()
                 return
             self._network_update(dt)
-        if not self.is_paused:
+        if self.end_time_triggered is not None:
+            pass
+        elif not self.is_paused:
+            if getattr(self, 'end_timer', None) is not None:
+                self.end_timer -= 1
+                if self.end_timer <= 0 and self.end_time_triggered is None:
+                    self.end_time_triggered = pygame.time.get_ticks()
+
             if getattr(self, 'game_started', False) and not self.boss_glace_dead and self.player.hp_current > 0:
                 self.play_time += dt * 1000.0
             if self.game_started and self.current_save_slot:
@@ -826,7 +848,7 @@ class Game:
                 if hasattr(m, 'heal_allies'):
                     m.heal_allies(self.monster_sprites)
                 is_m_dead = getattr(m, 'dead', False) or not getattr(m, 'alive', True)
-                if not is_m_dead and m.rect.colliderect(self.player.hitbox) and self.player.hp_current > 0:
+                if not is_m_dead and getattr(m, "hitbox", m.rect).colliderect(self.player.hitbox) and self.player.hp_current > 0:
                     if getattr(m, 'contact_timer', 0) <= 0:
                         self.player.take_damage(getattr(m, 'ATTACK_DAMAGE', 10))
                         m.contact_timer = getattr(m, 'CONTACT_COOLDOWN', 60)
@@ -913,7 +935,7 @@ class Game:
             for proj in list(self.player.capacite.projectiles):
                 for m in list(self.monster_sprites):
                     is_dead = getattr(m, 'dead', False) or not getattr(m, 'alive', True)
-                    if not is_dead and proj.rect.colliderect(m.rect):
+                    if not is_dead and proj.rect.colliderect(getattr(m, "hitbox", m.rect)):
                         proj.kill()
                         if not self.is_multi or self.network.role == "host":
                             m.take_damage(20)
@@ -1153,6 +1175,21 @@ class Game:
                 overlay.fill((0, 0, 0, 160))
                 self.screen.blit(overlay, (0, 0))
                 self.menu.draw(self.game_started, self.network)
+
+            if getattr(self, 'end_time_triggered', None) is not None:
+                time_since_end = pygame.time.get_ticks() - self.end_time_triggered
+                progress = min(1.0, time_since_end / 3000.0)
+                overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, int(255 * progress)))
+                self.screen.blit(overlay, (0, 0))
+                
+                if progress >= 1.0:
+                    self.screen.blit(self.end_screen_img, (0, 0))
+                    txt = self.font_title.render("MERCI D'AVOIR JOUE !", True, WHITE)
+                    txt_shadow = self.font_title.render("MERCI D'AVOIR JOUE !", True, BLACK)
+                    self.screen.blit(txt_shadow, (SCREEN_WIDTH // 2 - txt.get_width() // 2 + 2, 50 + 2))
+                    self.screen.blit(txt, (SCREEN_WIDTH // 2 - txt.get_width() // 2, 50))
+
         if flip:
             pygame.display.flip()
     def run(self):
