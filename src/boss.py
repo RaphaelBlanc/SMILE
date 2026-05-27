@@ -550,7 +550,7 @@ class BossBase(pygame.sprite.Sprite):
 
 class Pyros(BossBase):
     NAME     = "PYROS"
-    HP_MAX   = 400
+    HP_MAX   = 800
     WIDTH    = 576
     HEIGHT   = 320
     THEME_PROJ   = (255, 100, 20)
@@ -708,9 +708,9 @@ class Pyros(BossBase):
 
 
     def _get_attack_pool(self):
-        return {1:["groundslam","fireline"],
-                2:["groundslam","firewall","grab_walk"],
-                3:["groundslam","meteor","enrage_rush","firewall"]}[self.phase]
+        return {1:["groundslam","fireline", "charge_melee"],
+                2:["groundslam","firewall","grab_walk", "charge_melee"],
+                3:["groundslam","meteor","enrage_rush","firewall", "charge_melee"]}[self.phase]
     def _get_windup(self,n):   return self.TUNING["windup"].get(n,900)
     def _get_cooldown(self,n): return self.TUNING["cooldown"].get(n,1200)
     def _get_global_cd(self):  return self.TUNING["global_cd"][self.phase]
@@ -734,6 +734,10 @@ class Pyros(BossBase):
             self._rush_dir=1 if pr.centerx>self.rect.centerx else -1
             self.facing_right=self._rush_dir==1
             self.exec_timer=T["rush_dur"]
+        elif n == "charge_melee":
+            self._charge_dir=1 if pr.centerx>self.rect.centerx else -1
+            self.facing_right=self._charge_dir==1
+            self.exec_timer=800
 
     def _exec_attack(self, dt_ms, pr):
         n=self.attack_name; T=self.TUNING
@@ -743,6 +747,17 @@ class Pyros(BossBase):
         elif n=="grab_walk":   self._ex_grab(dt_ms,pr)
         elif n=="meteor":      self._ex_meteor(dt_ms)
         elif n=="enrage_rush": self._ex_rush(dt_ms)
+        elif n=="charge_melee": self._ex_charge_melee(dt_ms)
+
+    def _ex_charge_melee(self, dt_ms):
+        self.vx = self._charge_dir * 14
+        self.exec_timer -= dt_ms
+        if self.exec_timer <= 0 or getattr(self, '_hit_wall', False):
+            self.vx = 0
+            if getattr(self, '_hit_wall', False):
+                self._screen_shake_flag = True
+                self._play("boss_hit")
+            self._end_attack()
 
     def _ex_slam(self, dt_ms):
         T=self.TUNING
