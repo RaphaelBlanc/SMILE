@@ -608,11 +608,13 @@ class GoblinMelee(BaseEnemy):
             anim_state = "hurt"
             loop = False
         elif self.state == self.ST_ATTACK:
-            if self.attack_timer > 0:
-                anim_state = "wander"  # Utilise la marche arrière
-            else:
+            if self.attack_timer > self.ATTACK_CD - 30:
                 anim_state = "attack"
                 loop = False
+            elif self.attack_timer > 0:
+                anim_state = "wander"  # Utilise la marche arrière
+            else:
+                anim_state = "idle"
         elif self.state == self.ST_CHASE:
             anim_state = "chase"
         elif self.state in (self.ST_WANDER, self.ST_RETURN):

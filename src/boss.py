@@ -563,7 +563,7 @@ class Pyros(BossBase):
     THEME_PBORD  = (180,80, 30)
 
     TUNING = {
-        "global_cd":  {1:2200, 2:1600, 3:1000},
+        "global_cd":  {1:1600, 2:800, 3:300},
         "windup":     {"groundslam":900,"fireline":700,"firewall":1000,
                        "grab_walk":600,"meteor":1100,"enrage_rush":700},
         "cooldown":   {"groundslam":1200,"fireline":1000,"firewall":1300,
@@ -711,8 +711,12 @@ class Pyros(BossBase):
         return {1:["groundslam","fireline", "charge_melee"],
                 2:["groundslam","firewall","grab_walk", "charge_melee"],
                 3:["groundslam","meteor","enrage_rush","firewall", "charge_melee"]}[self.phase]
-    def _get_windup(self,n):   return self.TUNING["windup"].get(n,900)
-    def _get_cooldown(self,n): return self.TUNING["cooldown"].get(n,1200)
+    def _get_windup(self,n):   
+        base = self.TUNING["windup"].get(n,900)
+        return int(base * (1.0 - (self.phase - 1) * 0.35))
+    def _get_cooldown(self,n): 
+        base = self.TUNING["cooldown"].get(n,1200)
+        return int(base * (1.0 - (self.phase - 1) * 0.35))
     def _get_global_cd(self):  return self.TUNING["global_cd"][self.phase]
 
     def _start_attack(self, pr):
@@ -728,6 +732,7 @@ class Pyros(BossBase):
             self._fw_count=0; self._fw_timer=0; self._fw_ox=pr.centerx
         elif n == "grab_walk":
             self._grab_hit=False
+            self._grab_timeout=4000
         elif n == "meteor":
             self._meteor_n=0; self._meteor_t=0
         elif n == "enrage_rush":
@@ -812,16 +817,18 @@ class Pyros(BossBase):
         T=self.TUNING
         dx=pr.centerx-self.rect.centerx
         if not self._grab_hit:
+            self._grab_timeout -= dt_ms
             spd=T["grab_spd"][self.phase]
             self.vx=spd*(1 if dx>0 else -1); self.facing_right=dx>0
-            if abs(dx)<T["grab_rng"]:
+            if abs(dx)<T["grab_rng"] or self._grab_timeout <= 0 or getattr(self, '_hit_wall', False):
                 self._grab_hit=True; self.vx=0; self.exec_timer=500
                 d=1 if self.facing_right else -1
                 cx=(self.rect.right+10 if d==1 else self.rect.left-10)
-                self.projectiles.add(BossProjectile(
-                    (cx,self.rect.centery+20),d*3,0,
-                    radius=T["grab_fist_r"],color=BROWN,max_lifetime=600))
-                self._play("boss_hit")
+                if abs(dx)<T["grab_rng"]:
+                    self.projectiles.add(BossProjectile(
+                        (cx,self.rect.centery+20),d*3,0,
+                        radius=T["grab_fist_r"],color=BROWN,max_lifetime=600))
+                    self._play("boss_hit")
         else:
             self.exec_timer-=dt_ms
             if self.exec_timer<=0: self._end_attack()
