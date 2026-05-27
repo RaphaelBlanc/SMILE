@@ -381,6 +381,15 @@ class Game:
         self.font_hud   = pygame.font.SysFont("consolas", 18, bold=True)
         self.font_small = pygame.font.SysFont("consolas", 14)
         self.font_title = pygame.font.SysFont("consolas", 42, bold=True)
+        self.potion_font = pygame.font.SysFont("consolas", 24, bold=True)
+        
+        # Potion
+        try:
+            self.potion_img = pygame.image.load(os.path.join(ROOT_DIR, "assets", "images", "potion.png")).convert_alpha()
+            self.potion_img = pygame.transform.scale(self.potion_img, (64, 64))
+        except:
+            self.potion_img = pygame.Surface((64, 64), pygame.SRCALPHA)
+            pygame.draw.rect(self.potion_img, RED, (0, 0, 64, 64))
 
         # --- ETATS DU JEU ---
         self.is_paused    = True
@@ -487,6 +496,17 @@ class Game:
         
         if zone_current and zone_current != zone_next:
             self.killed_mobs.clear()
+            
+        # Reinitialise les potions
+        if "BossLave" in map_file or ("lave" in map_file.lower() and "boss" in map_file.lower()):
+            self.player.potions_max = 1
+        elif "glace" in map_file.lower() and "boss" in map_file.lower():
+            self.player.potions_max = 2
+        else:
+            self.player.potions_max = 3
+            
+        self.player.potions_current = self.player.potions_max
+        self.player.potion_primed = False
             
         self.current_map_name = map_file
 
@@ -1129,6 +1149,8 @@ class Game:
         self.death_time = None
         self.player.hp_current = self.player.hp_max
         self.player.vel_y = 0
+        self.player.potions_current = self.player.potions_max
+        self.player.potion_primed = False
         self.killed_mobs.clear()
         
         if self.killed_by_boss and getattr(self, 'zone_boss_map', None):
@@ -1318,6 +1340,7 @@ class Game:
                     
                     if hasattr(m, 'attack_state') and mob_type == 'Glacius':
                         self.boss_glace_dead = True
+                        self.player.hp_current = self.player.hp_max
                         self.boss_death_pos = (m.rect.centerx, m.rect.bottom - 64)
                         
                         # Handle best time
@@ -1341,6 +1364,7 @@ class Game:
                         npc = NPC(self.boss_death_pos, msg, [self.visibles_sprites, self.npc_sprites], on_end_callback=self.teleport_from_boss)
                     elif hasattr(m, 'attack_state') and mob_type == 'Pyros':
                         self.boss_lave_dead = True
+                        self.player.hp_current = self.player.hp_max
                         self.boss_death_pos = (m.rect.centerx, m.rect.bottom - 64)
                         msg = "Bravo, tu as vaincu le gardien de la lave !|Je te téléporte hors d'ici."
                         npc = NPC(self.boss_death_pos, msg, [self.visibles_sprites, self.npc_sprites], on_end_callback=self.teleport_from_boss_lave)
@@ -1410,12 +1434,24 @@ class Game:
         x, y  = 50, 50
         ratio = max(0, self.player.hp_current / self.player.hp_max)
         bar_w = self.player.health_bar_length
-        pygame.draw.rect(self.screen, RED,   (x, y, bar_w, 20))
-        pygame.draw.rect(self.screen, GREEN, (x, y, int(bar_w * ratio), 20))
-        pygame.draw.rect(self.screen, BLACK, (x, y, bar_w, 20), 3)
+        
+        # Fond et bordure
+        pygame.draw.rect(self.screen, (40, 40, 40), (x - 4, y - 4, bar_w + 8, 28), border_radius=6)
+        pygame.draw.rect(self.screen, (130, 0, 0), (x, y, bar_w, 20), border_radius=4)
+        
+        # Barre de vie
+        if ratio > 0:
+            pygame.draw.rect(self.screen, (0, 200, 50), (x, y, int(bar_w * ratio), 20), border_radius=4)
+            
+        # Texte PV sous la barre
+        hp_text = self.font_hud.render(f"Joueur 1 : {int(self.player.hp_current)} / {int(self.player.hp_max)} PV", True, WHITE)
+        hp_text_shadow = self.font_hud.render(f"Joueur 1 : {int(self.player.hp_current)} / {int(self.player.hp_max)} PV", True, BLACK)
+        text_rect = hp_text.get_rect(midleft=(x, y + 36))
+        self.screen.blit(hp_text_shadow, (text_rect.x + 1, text_rect.y + 1))
+        self.screen.blit(hp_text, text_rect)
 
     def draw_status_indicators(self):
-        y = 80
+        y = 90
         p = self.player
         if p.is_poisoned and p.poison_timer > 0:
             s = p.poison_timer // 60 + 1
@@ -1425,7 +1461,7 @@ class Game:
         if p.slow_timer > 0:
             s = p.slow_timer // 60 + 1
             self.screen.blit(
-                self.font_hud.render(f"RALENTI {s}s", True, (100, 180, 255)), (50, y))
+                self.font_hud.render(f"LENT {s}s", True, (0, 200, 255)), (50, y))
             y += 24
         if p.burn_timer > 0:
             s = p.burn_timer // 60 + 1
@@ -1434,17 +1470,27 @@ class Game:
 
     def draw_remote_health_bar(self):
         """Barre de vie du joueur distant (haut droite)."""
-        if self.remote_player is None:
+        if not getattr(self, 'remote_player', None):
             return
-        x = SCREEN_WIDTH - 250
+        x = SCREEN_WIDTH - 280
         y = 50
         ratio = max(0, self.remote_player.hp_current / self.remote_player.hp_max)
         bar_w = 200
-        pygame.draw.rect(self.screen, RED,            (x, y, bar_w, 20))
-        pygame.draw.rect(self.screen, (0, 200, 255),  (x, y, int(bar_w * ratio), 20))
-        pygame.draw.rect(self.screen, BLACK,           (x, y, bar_w, 20), 3)
-        lbl = self.font_small.render("P2", True, (0, 200, 255))
-        self.screen.blit(lbl, (x - 30, y))
+        
+        # Fond et bordure
+        pygame.draw.rect(self.screen, (40, 40, 40), (x - 4, y - 4, bar_w + 8, 28), border_radius=6)
+        pygame.draw.rect(self.screen, (130, 0, 0), (x, y, bar_w, 20), border_radius=4)
+        
+        # Barre de vie allié (bleu)
+        if ratio > 0:
+            pygame.draw.rect(self.screen, (0, 100, 255), (x, y, int(bar_w * ratio), 20), border_radius=4)
+            
+        # Texte PV allié sous la barre
+        hp_text = self.font_hud.render(f"Joueur 2 : {int(self.remote_player.hp_current)} / {int(self.remote_player.hp_max)} PV", True, WHITE)
+        hp_text_shadow = self.font_hud.render(f"Joueur 2 : {int(self.remote_player.hp_current)} / {int(self.remote_player.hp_max)} PV", True, BLACK)
+        text_rect = hp_text.get_rect(midleft=(x, y + 36))
+        self.screen.blit(hp_text_shadow, (text_rect.x + 1, text_rect.y + 1))
+        self.screen.blit(hp_text, text_rect)
 
     def draw(self, flip=True):
         if self.is_paused:
@@ -1511,6 +1557,27 @@ class Game:
                     r = pygame.Rect(hz["x"], hz["y"], hz.get("w", 32), hz.get("h", 32))
                     r = self.camera.apply(r)
                     pygame.draw.rect(self.screen, (255, 100, 0), r, 2)
+
+            is_boss_fight = any(hasattr(m, 'attack_state') for m in self.monster_sprites)
+            if is_boss_fight:
+                px = SCREEN_WIDTH - 120
+                py = SCREEN_HEIGHT - 120
+                
+                # Detour blanc si primé
+                if self.player.potion_primed:
+                    pygame.draw.rect(self.screen, WHITE, (px - 5, py - 5, 74, 74), 3, border_radius=5)
+                    text = self.potion_font.render(f"{self.player.potions_current} RESTANTES", True, WHITE)
+                    self.screen.blit(text, (px - text.get_width() // 2 + 32, py - 30))
+                
+                # Nombre si non primé mais visible
+                elif self.player.potions_current > 0:
+                    text = self.potion_font.render(f"x{self.player.potions_current}", True, WHITE)
+                    self.screen.blit(text, (px + 64, py + 32))
+                else:
+                    text = self.potion_font.render(f"0", True, RED)
+                    self.screen.blit(text, (px + 64, py + 32))
+                
+                self.screen.blit(self.potion_img, (px, py))
 
             self.dialogue_box.draw()
             self.draw_health_bar()
@@ -1648,7 +1715,7 @@ class Game:
                                 elif 'lave' in self.current_map_name.lower():
                                     self.coming_from_lave = True
                                     self.map_flag = "lave"
-                                
+                                    
                                 if self.is_multi and self.network and self.network.role == "client":
                                     req_flag = "none"
                                     if getattr(self, 'coming_from_boss', False): req_flag = "boss"
@@ -1658,6 +1725,26 @@ class Game:
                                 else:
                                     self.load_map(door['dest'])
                                 break
+                                
+                # Potion
+                potion_key = self.player.keybinds.get("potion", pygame.K_r)
+                if event.type == pygame.KEYDOWN and event.key == potion_key:
+                    if not self.is_paused and self.player.hp_current > 0:
+                        is_boss_fight = any(hasattr(m, 'attack_state') for m in self.monster_sprites)
+                        if is_boss_fight:
+                            if self.player.potions_current > 0:
+                                if not self.player.potion_primed:
+                                    self.player.potion_primed = True
+                                else:
+                                    self.player.potion_primed = False
+                                    self.player.potions_current -= 1
+                                    self.player.hp_current = min(self.player.hp_max, self.player.hp_current + self.player.hp_max // 3)
+                                    if self.sound_manager:
+                                        # Use standard sound if heal sound not found
+                                        try:
+                                            self.sound_manager.play("heal")
+                                        except:
+                                            pass
 
                 # ── Boutons Game Over ───────────────────────────────
                 if (not self.is_paused

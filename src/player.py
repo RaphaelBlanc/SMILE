@@ -56,6 +56,7 @@ class Player(pygame.sprite.Sprite):
             "sprint":     pygame.K_LSHIFT,
             "attack":     pygame.K_f,
             "dash":       pygame.K_v,
+            "potion":     pygame.K_r,
         }
 
         self.direction = pygame.math.Vector2(0, 0)
@@ -79,6 +80,11 @@ class Player(pygame.sprite.Sprite):
         self.hp_max            = HP_MAX
         self.hp_current        = 100
         self.health_bar_length = 200
+
+        # --- POTIONS ---
+        self.potions_max = 3
+        self.potions_current = 3
+        self.potion_primed = False
 
         # --- INVINCIBILITE apres degats ---
         self.hurt_timer    = 0
