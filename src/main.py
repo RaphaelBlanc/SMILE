@@ -370,7 +370,7 @@ class Game:
     def __init__(self, screen=None, clock=None):
         if screen is None:
             pygame.init()
-            self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+            self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE | pygame.SCALED)
             pygame.display.set_caption("SMILE")
             self.clock  = pygame.time.Clock()
         else:
@@ -1791,7 +1791,7 @@ class Game:
 
 if __name__ == '__main__':
     pygame.init()
-    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE | pygame.SCALED)
     pygame.display.set_caption("SMILE")
     clock  = pygame.time.Clock()
 
