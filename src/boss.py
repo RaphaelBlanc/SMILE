@@ -752,11 +752,13 @@ class Pyros(BossBase):
     def _ex_charge_melee(self, dt_ms):
         self.vx = self._charge_dir * 14
         self.exec_timer -= dt_ms
-        if self.exec_timer <= 0 or getattr(self, '_hit_wall', False):
+        
+        if getattr(self, '_hit_wall', False) and self.on_ground:
+            self.vy = -18  # petit saut pour passer au dessus du mur
+            self._hit_wall = False
+
+        if self.exec_timer <= 0:
             self.vx = 0
-            if getattr(self, '_hit_wall', False):
-                self._screen_shake_flag = True
-                self._play("boss_hit")
             self._end_attack()
 
     def _ex_slam(self, dt_ms):

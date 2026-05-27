@@ -919,8 +919,8 @@ class EspritBase(BaseEnemy):
     PATROL_RADIUS    = 0
     SPEED            = 3
     JUMP_FORCE       = -11
-    DETECT_RANGE     = 400
-    LOSE_RANGE       = 600
+    DETECT_RANGE     = 250
+    LOSE_RANGE       = 400
     EXPLOSION_RADIUS = 10
 
     COULEUR_CORPS = PURPLE
