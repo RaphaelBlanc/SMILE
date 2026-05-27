@@ -554,6 +554,13 @@ class Game:
             pass
 
         player_spawn = (200, 200)
+        self.spawn_from_glace_point = None
+        self.spawn_depuis_glace_point = None
+        self.spawn_from_boss_point = None
+        self.spawn_from_lave_point = None
+        self.spawn_porte_glace_point = None
+        self.spawn_porte_to_glace_point = None
+        self.spawn_depuis_mage_point = None
         try:
             for obj_index, obj in enumerate(tmx_data.get_layer_by_name('Objets')):
                 obj_type = getattr(obj, 'type', None) or obj.properties.get('type', None)
@@ -596,10 +603,19 @@ class Game:
                         msg = "La porte est fermée...|Il faut d'abord vaincre le boss de glace."
                     NPC(pos, msg, [self.visibles_sprites, self.npc_sprites], name=getattr(obj, 'name', None), pnj_type=obj_type_lower)
                 elif obj_type_lower == 'mage':
-                    msg = "Salutations, aventurier.|Bienvenue dans la zone magique."
-                    NPC(pos, msg, [self.visibles_sprites, self.npc_sprites], name=getattr(obj, 'name', None), pnj_type=obj_type_lower)
+                    msg = "Bravo, tu as vaincu le boss !|Je vais te téléporter vers la fin."
+                    def tp_fin():
+                        if self.is_multi and getattr(self, 'network', None) and self.network.role == "client":
+                            self.network._send({"action": "request_map_change", "dest": 'assets/maps/Fin.tmx', "req_flag": "mage"})
+                        else:
+                            self.coming_from_mage = True
+                            self.map_flag = "mage"
+                            self.load_map('assets/maps/Fin.tmx')
+                    NPC(pos, msg, [self.visibles_sprites, self.npc_sprites], on_end_callback=tp_fin, name=getattr(obj, 'name', None), pnj_type=obj_type_lower)
                 elif obj_type_lower == 'spawndepuisglace':
                     self.spawn_depuis_glace_point = pos
+                elif obj_type_lower == 'spawndepuismage':
+                    self.spawn_depuis_mage_point = pos
                 elif obj_type_lower == 'npc':
                     msg = obj.properties.get('message', 'Bonjour !')
                     NPC(pos, msg, [self.visibles_sprites, self.npc_sprites], name=getattr(obj, 'name', None), pnj_type=obj_type_lower)
@@ -672,6 +688,10 @@ class Game:
             self.last_transition_flag = "glace"
             self.player.set_position(self.spawn_depuis_glace_point)
             self.respawn_point = self.spawn_depuis_glace_point
+        elif getattr(self, 'coming_from_mage', False) and getattr(self, 'spawn_depuis_mage_point', None):
+            self.last_transition_flag = "mage"
+            self.player.set_position(self.spawn_depuis_mage_point)
+            self.respawn_point = self.spawn_depuis_mage_point
         elif self.coming_from_lave and self.spawn_from_lave_point:
             self.last_transition_flag = "lave"
             self.player.set_position(self.spawn_from_lave_point)
@@ -696,6 +716,7 @@ class Game:
         self.coming_from_lave = False
         self.coming_from_teleport = False
         self.coming_from_teleport_lave = False
+        self.coming_from_mage = False
         self.map_flag = None
         self.killed_by_boss = False
         self.coming_from_boss = False
@@ -998,6 +1019,7 @@ class Game:
                         elif remote_flag == "lave": self.coming_from_lave = True
                         elif remote_flag == "tp_glace": self.coming_from_teleport = True
                         elif remote_flag == "tp_lave": self.coming_from_teleport_lave = True
+                        elif remote_flag == "mage": self.coming_from_mage = True
                         self.load_map(remote_map)
 
                     for ev in msg.get("events_for_client", []):
