@@ -164,6 +164,8 @@ class ChienEnrage(BaseEnemy):
                 self.state = self.ST_ATTACK
                 self.animator.current_state = "attack"
                 self.animator.frame_index = 0
+                if getattr(self, 'sound_manager', None):
+                    self.sound_manager.play("chien_attack")
             elif dist > self.LOSE_RANGE:
                 self.state = self.ST_RETURN
         elif self.state == self.ST_ATTACK:
@@ -173,8 +175,6 @@ class ChienEnrage(BaseEnemy):
                 if self.contact_timer <= 0 and dist <= self.ATTACK_RANGE + 30:
                     player.take_damage(self.ATTACK_DAMAGE)
                     self.contact_timer = self.CONTACT_COOLDOWN
-                    if getattr(self, 'sound_manager', None):
-                        self.sound_manager.play("chien_attack")
                 self.attack_timer = self.ATTACK_CD
                 self.state = self.ST_CHASE
             return 

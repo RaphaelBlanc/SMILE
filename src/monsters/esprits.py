@@ -51,7 +51,7 @@ class EspritBase(BaseEnemy):
     JUMP_FORCE       = -11
     DETECT_RANGE     = 800
     LOSE_RANGE       = 1100
-    EXPLOSION_RADIUS = 20
+    EXPLOSION_RADIUS = 15
     COULEUR_CORPS = PURPLE
     COULEUR_AURA  = (180, 0, 255)
     ST_WANDER  = "wander"
@@ -145,7 +145,7 @@ class EspritFeu(EspritBase):
     JUMP_FORCE       = -12
     DETECT_RANGE     = 900
     LOSE_RANGE       = 1200
-    EXPLOSION_RADIUS = 25
+    EXPLOSION_RADIUS = 18
     COULEUR_CORPS    = (220, 60,  0)
     COULEUR_AURA     = (255, 200, 0)
     BURN_DPS         = 5
@@ -164,7 +164,7 @@ class EspritGlace(EspritBase):
     JUMP_FORCE       = -8
     DETECT_RANGE     = 800
     LOSE_RANGE       = 1100
-    EXPLOSION_RADIUS = 30
+    EXPLOSION_RADIUS = 22
     COULEUR_CORPS    = BLUE_ICE
     COULEUR_AURA     = CYAN
     SLOW_DUR         = 180
@@ -195,7 +195,7 @@ class EspritFoudre(EspritBase):
     JUMP_FORCE       = -14
     DETECT_RANGE     = 970
     LOSE_RANGE       = 1250
-    EXPLOSION_RADIUS = 22
+    EXPLOSION_RADIUS = 16
     COULEUR_CORPS    = (180, 180, 0)
     COULEUR_AURA     = ELECTRIC
     SHOCK_DAMAGE     = 18
@@ -239,7 +239,7 @@ class EspritNature(EspritBase):
     JUMP_FORCE       = -10
     DETECT_RANGE     = 800
     LOSE_RANGE       = 1100
-    EXPLOSION_RADIUS = 25
+    EXPLOSION_RADIUS = 18
     COULEUR_CORPS    = NATURE_GREEN
     COULEUR_AURA     = GREEN_LIGHT
     POISON_DPS       = 3
