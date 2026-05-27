@@ -96,8 +96,7 @@ class BossProjectile(pygame.sprite.Sprite):
         if (self.rect.right < -80 or self.rect.left > SCREEN_WIDTH + 80
                 or self.rect.top > SCREEN_HEIGHT + 80):
             self.kill(); return
-        if obstacles and pygame.sprite.spritecollide(self, obstacles, False):
-            self.kill()
+        # Les projectiles de boss traversent les obstacles pour ne pas disparaître prématurément
 
 
 class IceSpike(pygame.sprite.Sprite):
@@ -383,9 +382,9 @@ class BossBase(pygame.sprite.Sprite):
             elif self.vy < 0:
                 self.rect.top = h.rect.bottom; self.vy = 0
         if self.rect.left < 36:
-            self.rect.left = 36; self._hit_wall = True
+            self.rect.left = 36; self._hit_bounds = True
         if self.rect.right > SCREEN_WIDTH - 36:
-            self.rect.right = SCREEN_WIDTH - 36; self._hit_wall = True
+            self.rect.right = SCREEN_WIDTH - 36; self._hit_bounds = True
 
     # ── Particules ────────────────────────────────────────────────────────────
     def _emit_dust(self, count=10, colors=None):
@@ -758,8 +757,16 @@ class Pyros(BossBase):
         self.vx = self._charge_dir * 22
         self.exec_timer -= dt_ms
         
+        if getattr(self, '_hit_bounds', False):
+            self.vx = 0
+            self._screen_shake_flag = True
+            self._end_attack()
+            self._hit_bounds = False
+            return
+            
         if getattr(self, '_hit_wall', False) and self.on_ground:
-            self.vy = -18  # petit saut pour passer au dessus du mur
+            self.vy = -24  # saut plus haut pour bien passer au-dessus
+            self.rect.y -= 10 # petit décalage pour s'assurer qu'il se décolle du sol
             self._hit_wall = False
 
         if self.exec_timer <= 0:
