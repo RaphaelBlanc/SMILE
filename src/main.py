@@ -1013,10 +1013,13 @@ class Game:
                         self.remote_player.status     = msg.get("p2_status", self.remote_player.status)
                     self.remote_projs = msg.get("projs", [])
                     for dmg in msg.get("damage_events", []):
-                        mob_id = dmg.get("mob_id")
-                        mob = next((m for m in self.monster_sprites if getattr(m, 'id', None) == mob_id), None)
-                        if mob:
-                            mob.take_damage(dmg.get("amount", 20))
+                        if dmg.get("target") == "host":
+                            self.player.take_damage(dmg.get("amount", 20))
+                        else:
+                            mob_id = dmg.get("mob_id")
+                            mob = next((m for m in self.monster_sprites if getattr(m, 'id', None) == mob_id), None)
+                            if mob:
+                                mob.take_damage(dmg.get("amount", 20))
                 elif msg.get("action") == "damage_mob":
                     self._respawn()
                 elif msg.get("action") == "request_map_change":
@@ -1064,12 +1067,12 @@ class Game:
                         self.load_map(remote_map)
 
                     for ev in msg.get("events_for_client", []):
-                        if ev["type"] in ("boss_proj", "boss_sw", "boss_hazard"):
-                            self.player.take_damage(ev["damage"])
-                            if ev["effect"] == "glace":
+                        if ev["type"] in ("boss_proj", "boss_sw", "boss_hazard", "pvp_damage"):
+                            self.player.take_damage(ev.get("damage", 20))
+                            if ev.get("effect") == "glace":
                                 self.player.slow_timer = 180
                                 self.player.slow_factor = 0.4
-                            elif ev["effect"] == "lave":
+                            elif ev.get("effect") == "lave":
                                 self.player.burn_timer = 180
                                 self.player.burn_dps = 3
 
@@ -1407,6 +1410,19 @@ class Game:
                             if self.network:
                                 self.pending_damage_events.append({"mob_id": getattr(m, 'id', -1), "amount": 20})
                         break
+
+            # Projectiles joueur → autre joueur (PVP)
+            if self.is_multi and self.current_map_name == 'assets/maps/PVP.tmx' and getattr(self, 'remote_player', None):
+                for proj in list(self.player.capacite.projectiles):
+                    if proj.rect.colliderect(self.remote_player.rect):
+                        proj.kill()
+                        if self.network:
+                            if self.network.role == "host":
+                                if not hasattr(self, 'events_for_client'):
+                                    self.events_for_client = []
+                                self.events_for_client.append({"type": "pvp_damage", "damage": 20})
+                            elif self.network.role == "client":
+                                self.pending_damage_events.append({"target": "host", "amount": 20})
 
             # Mise à jour des projectiles ennemis
             self.enemy_proj_sprites.update(self.obstacle_sprites)
