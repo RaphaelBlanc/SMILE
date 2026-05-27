@@ -1009,10 +1009,15 @@ class Game:
                 self.last_msg_time = pygame.time.get_ticks()
                 if msg.get("action") == "input":
                     if self.remote_player:
+                        prev_hp = getattr(self.remote_player, 'hp_current', 100)
                         self.remote_player.rect.x     = msg.get("p2_x", self.remote_player.rect.x)
                         self.remote_player.rect.y     = msg.get("p2_y", self.remote_player.rect.y)
                         self.remote_player.hp_current = msg.get("p2_hp", self.remote_player.hp_current)
                         self.remote_player.status     = msg.get("p2_status", self.remote_player.status)
+                        
+                        if prev_hp > 0 and self.remote_player.hp_current <= 0:
+                            if getattr(self, 'current_map_name', '') == 'assets/maps/PVP.tmx':
+                                self.pvp_score_host = getattr(self, 'pvp_score_host', 0) + 1
                     self.remote_projs = msg.get("projs", [])
                     for dmg in msg.get("damage_events", []):
                         if dmg.get("target") == "host":
@@ -1022,8 +1027,6 @@ class Game:
                             mob = next((m for m in self.monster_sprites if getattr(m, 'id', None) == mob_id), None)
                             if mob:
                                 mob.take_damage(dmg.get("amount", 20))
-                elif msg.get("action") == "pvp_player_died":
-                    self.pvp_score_host = getattr(self, 'pvp_score_host', 0) + 1
                 elif msg.get("action") == "damage_mob":
                     self._respawn()
                 elif msg.get("action") == "request_map_change":
@@ -1630,14 +1633,15 @@ class Game:
                 self.draw_remote_health_bar()
 
             if self.is_multi and getattr(self, 'current_map_name', '') == 'assets/maps/PVP.tmx':
-                score_txt = self.font_hud.render(
-                    f"PVP Kills - Host: {getattr(self, 'pvp_score_host', 0)} | Client: {getattr(self, 'pvp_score_client', 0)}", True, RED)
+                score_txt = self.font_title.render(
+                    f"{getattr(self, 'pvp_score_host', 0)} - {getattr(self, 'pvp_score_client', 0)}", True, RED)
+                self.screen.blit(score_txt, (SCREEN_WIDTH // 2 - score_txt.get_width() // 2, 10))
             else:
                 score_txt = self.font_hud.render(
                     f"Score : {self.score}   Kills : {self.kill_count}", True, WHITE)
-            self.screen.blit(score_txt, (SCREEN_WIDTH - score_txt.get_width() - 20, 20))
+                self.screen.blit(score_txt, (SCREEN_WIDTH - score_txt.get_width() - 20, 20))
 
-            if getattr(self, 'game_started', False):
+            if getattr(self, 'game_started', False) and getattr(self, 'current_map_name', '') != 'assets/maps/PVP.tmx':
                 timer_txt = self.font_hud.render(format_time(self.play_time), True, YELLOW)
                 self.screen.blit(timer_txt, (SCREEN_WIDTH // 2 - timer_txt.get_width() // 2, 20))
 
@@ -1648,8 +1652,6 @@ class Game:
                         if getattr(self, 'network', None):
                             if self.network.role == "host":
                                 self.pvp_score_client = getattr(self, 'pvp_score_client', 0) + 1
-                            elif self.network.role == "client":
-                                self.network._send({"action": "pvp_player_died"})
                 
                 time_since_death = pygame.time.get_ticks() - self.death_time
                 if time_since_death >= 1000:
