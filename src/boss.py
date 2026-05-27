@@ -96,8 +96,7 @@ class BossProjectile(pygame.sprite.Sprite):
         if (self.rect.right < -80 or self.rect.left > SCREEN_WIDTH + 80
                 or self.rect.top > SCREEN_HEIGHT + 80):
             self.kill(); return
-        if obstacles and pygame.sprite.spritecollide(self, obstacles, False):
-            self.kill()
+        # Les projectiles de boss traversent les obstacles pour ne pas disparaître prématurément
 
 
 class IceSpike(pygame.sprite.Sprite):
@@ -124,13 +123,13 @@ class ShockWave(pygame.sprite.Sprite):
     """Onde de choc au sol (Pyros / Granit / Mutant)."""
 
     def __init__(self, center_x, floor_y, spread_speed=14,
-                 wave_height=70, color=ORANGE):
+                 wave_height=70, color=ORANGE, max_spread=None):
         super().__init__()
         self.cx    = center_x
         self.floor_y     = floor_y
         self.spread      = 20
         self.spread_speed= spread_speed
-        self.max_spread  = SCREEN_WIDTH // 2 + 80
+        self.max_spread  = max_spread if max_spread is not None else SCREEN_WIDTH // 2 + 80
         self.height      = wave_height
         self.alpha       = 255
         self.color       = color
@@ -383,9 +382,9 @@ class BossBase(pygame.sprite.Sprite):
             elif self.vy < 0:
                 self.rect.top = h.rect.bottom; self.vy = 0
         if self.rect.left < 36:
-            self.rect.left = 36; self._hit_wall = True
+            self.rect.left = 36; self._hit_bounds = True
         if self.rect.right > SCREEN_WIDTH - 36:
-            self.rect.right = SCREEN_WIDTH - 36; self._hit_wall = True
+            self.rect.right = SCREEN_WIDTH - 36; self._hit_bounds = True
 
     # ── Particules ────────────────────────────────────────────────────────────
     def _emit_dust(self, count=10, colors=None):
@@ -550,7 +549,7 @@ class BossBase(pygame.sprite.Sprite):
 
 class Pyros(BossBase):
     NAME     = "PYROS"
-    HP_MAX   = 400
+    HP_MAX   = 2500
     WIDTH    = 576
     HEIGHT   = 320
     THEME_PROJ   = (255, 100, 20)
@@ -563,7 +562,7 @@ class Pyros(BossBase):
     THEME_PBORD  = (180,80, 30)
 
     TUNING = {
-        "global_cd":  {1:2200, 2:1600, 3:1000},
+        "global_cd":  {1:1600, 2:800, 3:300},
         "windup":     {"groundslam":900,"fireline":700,"firewall":1000,
                        "grab_walk":600,"meteor":1100,"enrage_rush":700},
         "cooldown":   {"groundslam":1200,"fireline":1000,"firewall":1300,
@@ -575,7 +574,7 @@ class Pyros(BossBase):
         "slam_shake": 16,
         "fire_count": 3, "fire_ivl":600, "fire_spd":6, "fire_r":28,
         "fw_cols":8,  "fw_ivl":200, "fw_vmin":9,"fw_vmax":14,"fw_r":20,
-        "grab_spd":   {1:4.0,2:5.0,3:6.5}, "grab_rng":90, "grab_fist_r":32,
+        "grab_spd":   {1:8.0,2:10.0,3:13.0}, "grab_rng":90, "grab_fist_r":32,
         "meteor_n":16,"meteor_ivl":170,"meteor_vmin":11,"meteor_vmax":17,"meteor_r":22,
         "rush_spd":24,"rush_dur":1600,
     }
@@ -708,11 +707,15 @@ class Pyros(BossBase):
 
 
     def _get_attack_pool(self):
-        return {1:["groundslam","fireline"],
-                2:["groundslam","firewall","grab_walk"],
-                3:["groundslam","meteor","enrage_rush","firewall"]}[self.phase]
-    def _get_windup(self,n):   return self.TUNING["windup"].get(n,900)
-    def _get_cooldown(self,n): return self.TUNING["cooldown"].get(n,1200)
+        return {1:["groundslam","fireline", "charge_melee"],
+                2:["groundslam","firewall","grab_walk", "charge_melee"],
+                3:["groundslam","meteor","enrage_rush","firewall", "charge_melee"]}[self.phase]
+    def _get_windup(self,n):   
+        base = self.TUNING["windup"].get(n,900)
+        return int(base * (1.0 - (self.phase - 1) * 0.35))
+    def _get_cooldown(self,n): 
+        base = self.TUNING["cooldown"].get(n,1200)
+        return int(base * (1.0 - (self.phase - 1) * 0.35))
     def _get_global_cd(self):  return self.TUNING["global_cd"][self.phase]
 
     def _start_attack(self, pr):
@@ -728,12 +731,17 @@ class Pyros(BossBase):
             self._fw_count=0; self._fw_timer=0; self._fw_ox=pr.centerx
         elif n == "grab_walk":
             self._grab_hit=False
+            self._grab_timeout=4000
         elif n == "meteor":
             self._meteor_n=0; self._meteor_t=0
         elif n == "enrage_rush":
             self._rush_dir=1 if pr.centerx>self.rect.centerx else -1
             self.facing_right=self._rush_dir==1
             self.exec_timer=T["rush_dur"]
+        elif n == "charge_melee":
+            self._charge_dir=1 if pr.centerx>self.rect.centerx else -1
+            self.facing_right=self._charge_dir==1
+            self.exec_timer=800
 
     def _exec_attack(self, dt_ms, pr):
         n=self.attack_name; T=self.TUNING
@@ -743,6 +751,27 @@ class Pyros(BossBase):
         elif n=="grab_walk":   self._ex_grab(dt_ms,pr)
         elif n=="meteor":      self._ex_meteor(dt_ms)
         elif n=="enrage_rush": self._ex_rush(dt_ms)
+        elif n=="charge_melee": self._ex_charge_melee(dt_ms)
+
+    def _ex_charge_melee(self, dt_ms):
+        self.vx = self._charge_dir * 22
+        self.exec_timer -= dt_ms
+        
+        if getattr(self, '_hit_bounds', False):
+            self.vx = 0
+            self._screen_shake_flag = True
+            self._end_attack()
+            self._hit_bounds = False
+            return
+            
+        if getattr(self, '_hit_wall', False) and self.on_ground:
+            self.vy = -24  # saut plus haut pour bien passer au-dessus
+            self.rect.y -= 10 # petit décalage pour s'assurer qu'il se décolle du sol
+            self._hit_wall = False
+
+        if self.exec_timer <= 0:
+            self.vx = 0
+            self._end_attack()
 
     def _ex_slam(self, dt_ms):
         T=self.TUNING
@@ -754,7 +783,7 @@ class Pyros(BossBase):
         if self.on_ground and self.vy==0 and not self._slam_landed:
             self._slam_landed=True; self.exec_timer=500
             sw=ShockWave(self.rect.centerx,self.floor_y,
-                         T["slam_sw_spd"][self.phase],T["slam_sw_h"][self.phase])
+                         T["slam_sw_spd"][self.phase],T["slam_sw_h"][self.phase], max_spread=450)
             self.shockwaves.add(sw)
             self._screen_shake_flag=True; self._emit_dust(20)
             if self._slam_warning: self._slam_warning.done=True
@@ -795,16 +824,18 @@ class Pyros(BossBase):
         T=self.TUNING
         dx=pr.centerx-self.rect.centerx
         if not self._grab_hit:
+            self._grab_timeout -= dt_ms
             spd=T["grab_spd"][self.phase]
             self.vx=spd*(1 if dx>0 else -1); self.facing_right=dx>0
-            if abs(dx)<T["grab_rng"]:
+            if abs(dx)<T["grab_rng"] or self._grab_timeout <= 0 or getattr(self, '_hit_wall', False):
                 self._grab_hit=True; self.vx=0; self.exec_timer=500
                 d=1 if self.facing_right else -1
                 cx=(self.rect.right+10 if d==1 else self.rect.left-10)
-                self.projectiles.add(BossProjectile(
-                    (cx,self.rect.centery+20),d*3,0,
-                    radius=T["grab_fist_r"],color=BROWN,max_lifetime=600))
-                self._play("boss_hit")
+                if abs(dx)<T["grab_rng"]:
+                    self.projectiles.add(BossProjectile(
+                        (cx,self.rect.centery+20),d*3,0,
+                        radius=T["grab_fist_r"],color=BROWN,max_lifetime=600))
+                    self._play("boss_hit")
         else:
             self.exec_timer-=dt_ms
             if self.exec_timer<=0: self._end_attack()
