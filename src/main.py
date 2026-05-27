@@ -1000,6 +1000,8 @@ class Game:
                 state["projs"] = [{"x": p.rect.x, "y": p.rect.y} for p in self.player.capacite.projectiles]
                 state["enemy_projs"] = [{"x": p.rect.x, "y": p.rect.y} for p in self.enemy_proj_sprites]
                 state["events_for_client"] = getattr(self, 'events_for_client', [])
+                state["pvp_score_host"] = getattr(self, 'pvp_score_host', 0)
+                state["pvp_score_client"] = getattr(self, 'pvp_score_client', 0)
                 self.network.send_game_state(state)
                 self.events_for_client = []
 
@@ -1020,6 +1022,8 @@ class Game:
                             mob = next((m for m in self.monster_sprites if getattr(m, 'id', None) == mob_id), None)
                             if mob:
                                 mob.take_damage(dmg.get("amount", 20))
+                elif msg.get("action") == "pvp_player_died":
+                    self.pvp_score_host = getattr(self, 'pvp_score_host', 0) + 1
                 elif msg.get("action") == "damage_mob":
                     self._respawn()
                 elif msg.get("action") == "request_map_change":
@@ -1084,6 +1088,8 @@ class Game:
                         self.remote_player.status     = msg.get("p1_status", self.remote_player.status)
 
                     self.remote_projs = msg.get("projs", [])
+                    self.pvp_score_host = msg.get("pvp_score_host", getattr(self, "pvp_score_host", 0))
+                    self.pvp_score_client = msg.get("pvp_score_client", getattr(self, "pvp_score_client", 0))
                     self.remote_enemy_projs = msg.get("enemy_projs", [])
                     self.remote_boss_projs = msg.get("boss_projs", [])
                     self.remote_boss_shockwaves = msg.get("boss_shockwaves", [])
@@ -1623,8 +1629,12 @@ class Game:
             if self.is_multi:
                 self.draw_remote_health_bar()
 
-            score_txt = self.font_hud.render(
-                f"Score : {self.score}   Kills : {self.kill_count}", True, WHITE)
+            if self.is_multi and getattr(self, 'current_map_name', '') == 'assets/maps/PVP.tmx':
+                score_txt = self.font_hud.render(
+                    f"PVP Kills - Host: {getattr(self, 'pvp_score_host', 0)} | Client: {getattr(self, 'pvp_score_client', 0)}", True, RED)
+            else:
+                score_txt = self.font_hud.render(
+                    f"Score : {self.score}   Kills : {self.kill_count}", True, WHITE)
             self.screen.blit(score_txt, (SCREEN_WIDTH - score_txt.get_width() - 20, 20))
 
             if getattr(self, 'game_started', False):
@@ -1634,6 +1644,12 @@ class Game:
             if self.player.hp_current <= 0:
                 if self.death_time is None:
                     self.death_time = pygame.time.get_ticks()
+                    if self.is_multi and getattr(self, 'current_map_name', '') == 'assets/maps/PVP.tmx':
+                        if getattr(self, 'network', None):
+                            if self.network.role == "host":
+                                self.pvp_score_client = getattr(self, 'pvp_score_client', 0) + 1
+                            elif self.network.role == "client":
+                                self.network._send({"action": "pvp_player_died"})
                 
                 time_since_death = pygame.time.get_ticks() - self.death_time
                 if time_since_death >= 1000:
@@ -1857,6 +1873,8 @@ class Game:
                         self._launch_multi_game()
                         
                     elif action == "launch_multi_pvp":
+                        self.pvp_score_host = 0
+                        self.pvp_score_client = 0
                         self.load_map('assets/maps/PVP.tmx')
                         self._launch_multi_game()
                         
