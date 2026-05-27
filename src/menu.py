@@ -189,7 +189,7 @@ class Menu:
     def refresh_saves(self):
         self.saves = []
         center_x = SCREEN_WIDTH // 2
-        save_files = glob.glob("save_*.json")
+        save_files = glob.glob(os.path.join(ROOT_DIR, "data", "saves", "save_*.json"))
         slots = []
         for f in save_files:
             try:
@@ -206,7 +206,7 @@ class Menu:
             del_btn = self._btn(center_x + 240, y, 40, 40)
             
             label = f"SAUVEGARDE {slot}"
-            filename = f"save_{slot}.json"
+            filename = os.path.join(ROOT_DIR, "data", "saves", f"save_{slot}.json")
             if os.path.exists(filename):
                 try:
                     with open(filename, 'r') as f:
@@ -782,7 +782,7 @@ class Menu:
         return "multi_join_session"   # main.py s'occupera d'appeler network.join_session
 
     def load_best_time(self):
-        filepath = os.path.join(ROOT_DIR, "best_time.json")
+        filepath = os.path.join(ROOT_DIR, "data", "config", "best_time.json")
         if os.path.exists(filepath):
             try:
                 with open(filepath, "r") as f:
@@ -792,7 +792,7 @@ class Menu:
                 print(f"Erreur lors du chargement du meilleur temps : {e}")
 
     def load_keybinds(self):
-        filepath = os.path.join(ROOT_DIR, "keybinds.json")
+        filepath = os.path.join(ROOT_DIR, "data", "config", "keybinds.json")
         if os.path.exists(filepath):
             try:
                 with open(filepath, "r") as f:
@@ -804,7 +804,7 @@ class Menu:
                 print(f"Erreur lors du chargement des touches : {e}")
 
     def save_keybinds(self):
-        filepath = os.path.join(ROOT_DIR, "keybinds.json")
+        filepath = os.path.join(ROOT_DIR, "data", "config", "keybinds.json")
         try:
             with open(filepath, "w") as f:
                 json.dump(self.keybinds, f, indent=4)

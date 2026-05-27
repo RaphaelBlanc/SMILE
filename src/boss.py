@@ -283,7 +283,8 @@ class BossBase(pygame.sprite.Sprite):
         self.hp           = self.HP_MAX
         self.phase        = 1
         self.alive        = True
-        self.death_finished = True
+        self.death_finished = False
+        self.death_timer  = 2000
         self.floor_y      = floor_y
         self.obstacles    = room_obstacles
         self.vy           = 0.0
@@ -443,12 +444,21 @@ class BossBase(pygame.sprite.Sprite):
     # ── Update commun ─────────────────────────────────────────────────────────
     def update(self, player_rect, dt):
         if not self.alive:
-            if getattr(self, "death_finished", True):
+            if getattr(self, "death_finished", False):
                 return
             dt_ms = dt * 1000
+            if not hasattr(self, "death_timer"):
+                self.death_timer = 2000
+            self.death_timer -= dt_ms
+            if self.death_timer <= 0:
+                self.death_finished = True
+                
             self._apply_gravity()
             self._move_and_collide()
             self._update_visual(dt_ms)
+            
+            alpha = max(0, int(255 * (max(0, self.death_timer) / 2000.0)))
+            self.image.set_alpha(alpha)
             return
         dt_ms = dt * 1000
         self._screen_shake_flag = False
@@ -967,6 +977,7 @@ class Glacius(BossBase):
 
     def update(self, player_rect, dt):
         if getattr(self, 'alive', True) == False:
+            super().update(player_rect, dt)
             return
             
         dt_ms = dt * 1000

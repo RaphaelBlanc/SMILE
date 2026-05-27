@@ -620,7 +620,7 @@ class Game:
             self.is_end_game = True
             self.end_game_timer = 0.0
             
-            filepath = os.path.join(ROOT_DIR, "best_time.json")
+            filepath = os.path.join(ROOT_DIR, "data", "config", "best_time.json")
             old_best = None
             if os.path.exists(filepath):
                 try:
@@ -921,7 +921,7 @@ class Game:
     def load_game(self, slot):
         is_same_slot = (getattr(self, 'current_save_slot', None) == slot)
         self.current_save_slot = slot
-        filename = f"save_{slot}.json"
+        filename = os.path.join(ROOT_DIR, "data", "saves", f"save_{slot}.json")
         if os.path.exists(filename):
             try:
                 with open(filename, 'r') as f:
@@ -986,7 +986,7 @@ class Game:
         if not self.current_save_slot:
             return
             
-        filename = f"save_{self.current_save_slot}.json"
+        filename = os.path.join(ROOT_DIR, "data", "saves", f"save_{self.current_save_slot}.json")
         
         # Serialize killed_mobs
         killed_list = [[m[0], list(m[1])] for m in self.killed_mobs]
@@ -1014,7 +1014,7 @@ class Game:
             print(f"Erreur lors de la sauvegarde : {e}")
 
     def delete_save(self, slot):
-        filename = f"save_{slot}.json"
+        filename = os.path.join(ROOT_DIR, "data", "saves", f"save_{slot}.json")
         if os.path.exists(filename):
             try:
                 os.remove(filename)
