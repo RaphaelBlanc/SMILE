@@ -105,6 +105,7 @@ class Menu:
             "sprint":     pygame.K_LSHIFT,
             "attack":     pygame.K_f,
             "dash":       pygame.K_v,
+            "potion":     pygame.K_r,
         }
         self.load_keybinds()
         self.keybind_labels = {
@@ -115,7 +116,8 @@ class Menu:
             "jump":       "Sauter",
             "sprint":     "Sprint",
             "attack":     "Attaque",
-            "dash":       "Dash",
+            "dash":       "Esquive (Dash)",
+            "potion":     "Potion de Soin",
         }
         self.rebinding_action    = None
         self.keybind_list_y      = 400     
@@ -514,6 +516,7 @@ class Menu:
                         self.keybinds["move_down"]  = pygame.K_s
                         self.keybinds["move_left"]  = pygame.K_a
                         self.keybinds["move_right"] = pygame.K_d
+                        self.keybinds["potion"]     = pygame.K_r
                         self.save_keybinds()
                         self.rebinding_action = None
                         return ("keybinds_changed", self.keybinds)
@@ -522,6 +525,7 @@ class Menu:
                         self.keybinds["move_down"]  = pygame.K_s
                         self.keybinds["move_left"]  = pygame.K_q
                         self.keybinds["move_right"] = pygame.K_d
+                        self.keybinds["potion"]     = pygame.K_r
                         self.save_keybinds()
                         self.rebinding_action = None
                         return ("keybinds_changed", self.keybinds)
