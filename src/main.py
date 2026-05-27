@@ -738,7 +738,6 @@ class Game:
             self.last_transition_flag = "none"
             if "Fin" in map_file or "Fin.tmx" in map_file:
                 self.end_timer = 30.0 * 60
-                from npc import NPC
                 NPC((player_spawn[0] - 150, player_spawn[1]), ["Tu as vaincu les ombres... Le royaume est purifie !"], [self.visibles_sprites, self.npc_sprites], name="Guide", pnj_type="guide")
                 NPC((player_spawn[0] + 150, player_spawn[1]), ["Merci mortel... Mon feu ne brulera plus d'innocents."], [self.visibles_sprites, self.npc_sprites], name="Pyros", pnj_type="pyros")
                 NPC((player_spawn[0] + 300, player_spawn[1]), ["La glace eternelle a fondu. Merci de nous avoir sauves !"], [self.visibles_sprites, self.npc_sprites], name="Glacius", pnj_type="glacius")
