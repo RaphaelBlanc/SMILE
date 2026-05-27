@@ -1,5 +1,3 @@
-#SECTION IMPORT #######################################################################
-
 import pygame
 import sys
 import random
@@ -14,23 +12,18 @@ from menu import Menu
 from npc import NPC
 from npc import DialogueBox
 from network import Network
-from boss import Glacius, Pyros
-from monstre import (
+from bosses import Glacius, Pyros
+from monsters import (
     ChienEnrage, GoblinMelee, GoblinArcher,
     EspritFeu, EspritGlace, EspritFoudre, EspritNature,
     GolemPierre, Fox, Deer, GoblinLancier, Gorgon, MechaGolem,
 )
 from config import ROOT_DIR, format_time
+from core import Particle, AssetManager, Tile, Camera, RemotePlayer, IntroVideo
 import os
-
-#DEFINITON CONSTANTE##################################################################
-
-#ECRAN#
 SCREEN_WIDTH  = 1920
 SCREEN_HEIGHT = 1072
 FPS = 60
-
-#COULEURS#
 WHITE     = (255, 255, 255)
 BLACK     = (0,   0,   0)
 RED       = (255, 0,   0)
@@ -41,15 +34,11 @@ ORANGE    = (255, 165, 0)
 GREEN     = (0,   255, 0)
 GRAY      = (120, 120, 135)
 YELLOW    = (255, 220, 60)
-
-#PHYSIQUE#
 GRAVITY      = 0.8
 JUMP_FORCE   = -16
 PLAYER_SPEED = 6
 FRICTION     = -0.12
 HP_MAX       = 100
-
-# Correspondance type Tiled → classe Python (Hugo)
 MOB_CLASSES = {
     "ChienEnrage":  ChienEnrage,  "GoblinMelee":  GoblinMelee,
     "GoblinArcher": GoblinArcher, "EspritFeu":    EspritFeu,
@@ -79,294 +68,7 @@ MOB_XP = {
     "Gorgon":120,
     "MechaGolem":150,
 }
-
-#CLASS PARTICLE (Hugo)###############################################################
-
-class Particle:
-    def __init__(self, x, y, color):
-        self.x     = float(x)
-        self.y     = float(y)
-        self.vx    = random.uniform(-4, 4)
-        self.vy    = random.uniform(-6, -1)
-        self.life  = random.randint(18, 35)
-        self.r     = random.randint(3, 7)
-        self.color = color
-
-    def update(self):
-        self.x  += self.vx
-        self.vy += 0.4
-        self.y  += self.vy
-        self.life -= 1
-
-    def draw(self, surface):
-        if self.life > 0:
-            pygame.draw.circle(surface, self.color, (int(self.x), int(self.y)), self.r)
-
-#CLASS ASSET MANAGER#################################################################
-
-class AssetManager:
-    def __init__(self):
-        pass
-
-#CLASS TILE#########################################################################
-
-class Tile(pygame.sprite.Sprite):
-    def __init__(self, pos, surf, groups):
-        super().__init__(groups)
-        self.image = surf
-        self.rect  = self.image.get_rect(topleft=pos)
-
-#CLASS CAMERA (ton code)#############################################################
-
-class Camera:
-    def __init__(self, map_width, map_height):
-        self.map_width  = map_width
-        self.map_height = map_height
-        self.offset     = pygame.math.Vector2(0, 0)
-        self.lerp_speed = 0.10
-
-    def update(self, target_rect):
-        target_x = target_rect.centerx - SCREEN_WIDTH  // 2
-        target_y = target_rect.centery - SCREEN_HEIGHT // 2
-        self.offset.x += (target_x - self.offset.x) * self.lerp_speed
-        self.offset.y += (target_y - self.offset.y) * self.lerp_speed
-        self.offset.x = max(0, min(self.offset.x, self.map_width  - SCREEN_WIDTH))
-        self.offset.y = max(0, min(self.offset.y, self.map_height - SCREEN_HEIGHT))
-
-    def apply(self, rect):
-        return rect.move(-int(self.offset.x), -int(self.offset.y))
-
-#CLASS REMOTE PLAYER (fantôme de l'autre joueur) #####################################
-
-class RemotePlayer(pygame.sprite.Sprite):
-    """Représentation locale animée du joueur distant — mis à jour par les messages réseau."""
-    def __init__(self, pos, player_num=2):
-        super().__init__()
-        self.player_num = player_num
-        self.hp_current = 100
-        self.hp_max     = 100
-        self.facing_right = True
-        self.is_sprinting = False
-        self.on_ladder = False
-        self.status = "idle_right"
-        
-        self.dx = 0
-        self.dy = 0
-        
-        from animator import Animator
-        self.animations = {}
-        self._load_assets()
-        
-        self.animator = Animator(self.animations, fps=8)
-        self.image = self.animations["idle_right"][0]
-        self.rect  = self.image.get_rect(topleft=pos)
-
-    def _load_assets(self):
-        import os
-        from config import ROOT_DIR
-        actions = [
-            'idle_right', 'idle_left', 'run_right', 'run_left', 
-            'sprint_right', 'sprint_left', 'jump_right', 'jump_left', 
-            'land_right', 'land_left', 'death', 'back', 'front'
-        ]
-        self.animations = {action: [] for action in actions}
-        
-        if self.player_num == 2:
-            base_path = os.path.join(ROOT_DIR, 'assets', 'images', 'player2', 'mouvements')
-            prefix = "Slime2_"
-            death_file = "Slime2_Death.png"
-            fill_color = (0, 200, 255)
-        else:
-            base_path = os.path.join(ROOT_DIR, 'assets', 'images', 'player', 'mouvements')
-            prefix = "Slime1_"
-            death_file = "Slime1_Death_body.png"
-            fill_color = (0, 200, 0)
-            
-        SLIME_SIZE = (225, 225) 
-        ROW_FRONT = 0
-        ROW_BACK  = 1
-        ROW_LEFT  = 2
-        ROW_RIGHT = 3
-
-        def slice_sheet(filename, cols, rows):
-            path = os.path.join(base_path, filename)
-            if not os.path.exists(path):
-                return None
-            try:
-                sheet = pygame.image.load(path).convert_alpha()
-                frame_w = sheet.get_width() // cols
-                frame_h = sheet.get_height() // rows
-                
-                sheet_frames = []
-                for r in range(rows):
-                    row_frames = []
-                    for c in range(cols):
-                        rect = pygame.Rect(c * frame_w, r * frame_h, frame_w, frame_h)
-                        img = pygame.Surface((frame_w, frame_h), pygame.SRCALPHA)
-                        img.blit(sheet, (0, 0), rect)
-                        img = pygame.transform.scale(img, SLIME_SIZE)
-                        row_frames.append(img)
-                    sheet_frames.append(row_frames)
-                return sheet_frames
-            except Exception as e:
-                print(f"Erreur decoupage {filename}: {e}")
-                return None
-
-        # 1. IDLE / MOUVEMENT
-        idle_frames = slice_sheet(f"{prefix}Idle_body.png", cols=6, rows=4)
-        if idle_frames:
-            self.animations['front']      = idle_frames[ROW_FRONT]
-            self.animations['back']       = idle_frames[ROW_BACK]
-            self.animations['idle_left']  = idle_frames[ROW_LEFT]
-            self.animations['idle_right'] = idle_frames[ROW_RIGHT]
-            
-            # Use same sheet for actions for simplicity and size matching
-            self.animations['run_left']     = idle_frames[ROW_LEFT]
-            self.animations['run_right']    = idle_frames[ROW_RIGHT]
-            self.animations['sprint_left']  = idle_frames[ROW_LEFT]
-            self.animations['sprint_right'] = idle_frames[ROW_RIGHT]
-            self.animations['jump_left']    = idle_frames[ROW_LEFT]
-            self.animations['jump_right']   = idle_frames[ROW_RIGHT]
-            self.animations['land_left']    = idle_frames[ROW_LEFT]
-            self.animations['land_right']   = idle_frames[ROW_RIGHT]
-
-        # 2. DECEASED
-        death_frames = slice_sheet(death_file, cols=10, rows=4)
-        if death_frames:
-            self.animations['death'] = death_frames[ROW_FRONT]
-
-        # PLACEHOLDERS
-        for state in self.animations:
-            if not self.animations[state]:
-                placeholder = pygame.Surface(SLIME_SIZE, pygame.SRCALPHA)
-                placeholder.fill(fill_color)
-                self.animations[state].append(placeholder)
-
-    def apply_state(self, state: dict):
-        new_x = state.get("x", self.rect.x)
-        new_y = state.get("y", self.rect.y)
-        
-        self.dx = new_x - self.rect.x
-        self.dy = new_y - self.rect.y
-        
-        self.rect.x = new_x
-        self.rect.y = new_y
-        self.hp_current = state.get("hp", self.hp_current)
-
-    def take_damage(self, amount):
-        pass  # Les dégâts du joueur distant sont gérés de son côté et synchronisés via le réseau
-
-    def update(self, dt):
-        loop = (self.status != 'death')
-        self.image = self.animator.get_current_frame(dt, self.status, loop=loop)
-
-#CLASS INTRO VIDEO##################################################################
-
-class IntroVideo:
-    """Joue la vidéo d'intro avec son au lancement, AVANT que le SoundManager démarre la musique."""
-
-    def __init__(self, screen, clock, video_path):
-        self.screen     = screen
-        self.clock      = clock
-        self.video_path = video_path
-
-    def play(self):
-        """Bloque jusqu'à la fin de la vidéo (ou si le joueur appuie sur ESPACE/ENTRÉE/ECHAP)."""
-        cap = cv2.VideoCapture(self.video_path)
-        if not cap.isOpened():
-            print(f"INTRO : impossible d'ouvrir {self.video_path}, on passe.")
-            return
-
-        fps_video = cap.get(cv2.CAP_PROP_FPS) or 30.0
-
-        audio_path = None
-        try:
-            try:
-                from moviepy.editor import VideoFileClip   # moviepy 1.x
-            except ImportError:
-                from moviepy import VideoFileClip           # moviepy 2.x
-            import tempfile
-            clip = VideoFileClip(self.video_path)
-            if clip.audio is not None:
-                tmp = tempfile.NamedTemporaryFile(suffix=".ogg", delete=False)
-                audio_path = tmp.name
-                tmp.close()
-                clip.audio.write_audiofile(audio_path, logger=None)
-                pygame.mixer.music.stop()
-                pygame.mixer.music.load(audio_path)
-                pygame.mixer.music.play()
-            clip.close()
-        except Exception as e:
-            print(f"INTRO : audio non disponible ({e})")
-
-        running = True
-        while running:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    cap.release()
-                    pygame.mixer.music.stop()
-                    pygame.quit()
-                    sys.exit()
-                if event.type == pygame.KEYDOWN and event.key in (
-                        pygame.K_ESCAPE, pygame.K_RETURN, pygame.K_SPACE):
-                    running = False
-
-            success, frame = cap.read()
-            if not success:
-                break
-
-            # Enlever les bordures noires intégrées à la vidéo d'intro (5% de chaque côté sur 3840x2160)
-            # La zone utile est [108:2052, 192:3648]
-            h_vid, w_vid, _ = frame.shape
-            if w_vid > 192 and h_vid > 108:
-                margin_x = int(w_vid * 0.05)
-                margin_y = int(h_vid * 0.05)
-                frame = frame[margin_y:h_vid-margin_y, margin_x:w_vid-margin_x]
-
-            frame = cv2.resize(frame, (SCREEN_WIDTH, SCREEN_HEIGHT))
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frame = frame.transpose(1, 0, 2)
-            surf  = pygame.surfarray.make_surface(frame)
-            self.screen.blit(surf, (0, 0))
-
-            hint_font = pygame.font.SysFont("consolas", 22)
-            hint      = hint_font.render("ESPACE  pour passer", True, (200, 200, 200))
-            self.screen.blit(hint, (SCREEN_WIDTH - hint.get_width() - 24,
-                                    SCREEN_HEIGHT - hint.get_height() - 16))
-            pygame.display.flip()
-            self.clock.tick(fps_video)
-
-        cap.release()
-        pygame.mixer.music.stop()
-
-        # ── Fondu au noir depuis la dernière frame ───────────────────
-        fade = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-        fade.fill((0, 0, 0))
-        last_surf = surf if 'surf' in locals() else fade
-        for alpha in range(0, 256, 5):
-            self.screen.blit(last_surf, (0, 0))
-            fade.set_alpha(alpha)
-            self.screen.blit(fade, (0, 0))
-            pygame.display.flip()
-            pygame.time.delay(16)
-
-        # Noir complet une fraction de seconde
-        self.screen.fill((0, 0, 0))
-        pygame.display.flip()
-        pygame.time.delay(200)
-
-        # Supprimer le fichier audio temporaire
-        if audio_path:
-            try:
-                import os as _os
-                _os.remove(audio_path)
-            except Exception:
-                pass
-
-#CLASS GAME#########################################################################
-
 class Game:
-
     def __init__(self, screen=None, clock=None):
         if screen is None:
             pygame.init()
@@ -376,30 +78,20 @@ class Game:
         else:
             self.screen = screen
             self.clock  = clock
-
-        # Polices HUD
         self.font_hud   = pygame.font.SysFont("consolas", 18, bold=True)
         self.font_small = pygame.font.SysFont("consolas", 14)
         self.font_title = pygame.font.SysFont("consolas", 42, bold=True)
-
-        # --- ETATS DU JEU ---
         self.is_paused    = True
         self.game_started = False
         self.score        = 0
         self.kill_count   = 0
         self.particles    = []
-
-        # --- SAUVEGARDE ---
         self.current_save_slot = None
         self.last_save_time = 0
         self.save_indicator_timer = 0
         self.save_font = pygame.font.SysFont("consolas", 20, bold=True)
-
-        # Screen-shake pour GolemPierre
         self.shake_ref = [0]
         self.mob_counter = 0
-
-        # --- GAME OVER ---
         self.death_time = None
         cx = SCREEN_WIDTH // 2
         cy = SCREEN_HEIGHT // 2
@@ -407,23 +99,17 @@ class Game:
         self.btn_respawn.center = (cx - 200, cy + 80)
         self.btn_gameover_menu = pygame.Rect(0, 0, 320, 75)
         self.btn_gameover_menu.center = (cx + 200, cy + 80)
-        self.respawn_point = (200, 200)   # mis à jour au spawn / checkpoint
-        self.menu_input_blocked = 0       # frames où le menu ignore les clics
-
-        # --- MODE MULTI ---
-        self.network       = None          # Network() créé à la demande
-        self.is_multi      = False         # True si partie réseau
-        self.show_menu_overlay = False     # True pour afficher l'overlay en multi
-        self.remote_player = None          # RemotePlayer (l'autre joueur)
-        self.net_timer     = 0             # compteur pour envoi état (host)
+        self.respawn_point = (200, 200)   
+        self.menu_input_blocked = 0       
+        self.network       = None          
+        self.is_multi      = False         
+        self.show_menu_overlay = False     
+        self.remote_player = None          
+        self.net_timer     = 0             
         self.pending_damage_events = []
         self.last_transition_flag  = ""
-
-        # --- SON / MENU ---
         self.sound_manager = SoundManager()
         self.menu          = Menu(self.screen)
-
-        # --- GROUPES DE SPRITES ---
         self.visibles_sprites   = pygame.sprite.Group()
         self.obstacle_sprites   = pygame.sprite.Group()
         self.npc_sprites        = pygame.sprite.Group()
@@ -432,18 +118,13 @@ class Game:
         self.enemy_proj_sprites = pygame.sprite.Group()
         self.vfx_sprites        = pygame.sprite.Group()
         self.transition_sprites = pygame.sprite.Group()
-
-        # --- UI DIALOGUE ---
         self.dialogue_box = DialogueBox(self.screen)
-
         self.doors = []
         self.spawn_boss = None
         self.killed_by_boss = False
         self.current_map_name = ""
         self.killed_mobs = set()
         self.boss_death_pos = None
-        
-        # --- ETATS DE QUETE ---
         self.boss_glace_dead = False
         self.boss_lave_dead = False
         self.coming_from_boss = False
@@ -456,15 +137,10 @@ class Game:
         self.spawn_from_lave_point = None
         self.pnj_boss_pos = None
         self.play_time = 0.0
-
-        # Joueur local initial (sera repositionné par load_map)
         self.player = Player((200, 200), self.sound_manager, self.menu.keybinds)
         self.visibles_sprites.add(self.player)
         self.respawn_point = (200, 200)
-
-        # --- CHARGEMENT DE LA MAP ---
         self.load_map('assets/maps/Surface.tmx')
-
     def _get_zone_name(self, map_path):
         if not map_path:
             return ""
@@ -477,24 +153,17 @@ class Game:
         if "finale" in map_path:
             return "finale"
         return "unknown"
-
     def load_map(self, map_file):
         print(f"Chargement de la map : {map_file}")
-        
-        # Detect zone change
         zone_current = self._get_zone_name(self.current_map_name)
         zone_next = self._get_zone_name(map_file)
-        
         if zone_current and zone_current != zone_next:
             self.killed_mobs.clear()
-            
         self.current_map_name = map_file
-
         if 'glace' in map_file:
             self.sound_manager.play_world_music('glace')
         elif 'map1' in map_file or 'lave' in map_file:
             self.sound_manager.play_world_music('feu')
-        
         for s in self.visibles_sprites:
             if s != self.player and getattr(self, 'remote_player', None) != s:
                 s.kill()
@@ -509,24 +178,19 @@ class Game:
         self.particles.clear()
         self.doors.clear()
         self.dialogue_box.hide()
-        
         self.spawn_from_boss_point = None
         self.spawn_porte_glace_point = None
         self.spawn_from_glace_point = None
         self.spawn_from_lave_point = None
         self.pnj_boss_pos = None
-
         full_path = os.path.join(ROOT_DIR, map_file)
         if not os.path.exists(full_path):
             print(f"ATTENTION : Le fichier map '{full_path}' n'existe pas encore.")
             return
-
         tmx_data = load_pygame(full_path)
         map_pixel_width  = tmx_data.width  * tmx_data.tilewidth
         map_pixel_height = tmx_data.height * tmx_data.tileheight
-
         self.camera = Camera(map_pixel_width, map_pixel_height)
-
         try:
             layer_fond = tmx_data.get_layer_by_name('Background')
             self.background_image = layer_fond.image
@@ -534,25 +198,21 @@ class Game:
             print("ERREUR : Calque 'Background' introuvable.")
             self.background_image = pygame.Surface((map_pixel_width, map_pixel_height))
             self.background_image.fill((50, 50, 50))
-
         for x, y, surf in tmx_data.get_layer_by_name('Collisions').tiles():
             if surf:
                 Tile((x * 32, y * 32), surf, [self.obstacle_sprites])
-
         try:
             for x, y, surf in tmx_data.get_layer_by_name('Echelles').tiles():
                 Tile((x * 32, y * 32), surf, [self.ladder_sprites])
             print(f"INFO : {len(self.ladder_sprites)} tuile(s) d'echelle chargee(s).")
         except ValueError:
             print("INFO : Calque 'Echelles' introuvable — echelles ignorees.")
-
         try:
             for x, y, surf in tmx_data.get_layer_by_name('Transition').tiles():
                 if surf:
                     Tile((x * 32, y * 32), surf, [self.transition_sprites])
         except ValueError:
             pass
-
         player_spawn = (200, 200)
         self.spawn_from_glace_point = None
         self.spawn_depuis_glace_point = None
@@ -566,12 +226,9 @@ class Game:
                 obj_type = getattr(obj, 'type', None) or obj.properties.get('type', None)
                 if not obj_type:
                     obj_type = getattr(obj, 'name', None)
-                
                 pos = (int(obj.x), int(obj.y))
                 rect = pygame.Rect(pos[0], pos[1], getattr(obj, 'width', 32), getattr(obj, 'height', 32))
-
                 obj_type_lower = obj_type.lower() if obj_type else ''
-
                 if obj_type_lower in ('spawnjoueur', 'spawn_lave', 'spawn_depart', 'spawn_joueur_boss_lave'):
                     player_spawn = pos
                 elif obj_type_lower == 'spawnjoueurboss':
@@ -637,10 +294,8 @@ class Game:
                         dest = 'assets/maps/ZoneMage.tmx'
                     else:
                         dest = 'assets/maps/map_finale.tmx'
-                    
                     if obj_type_lower == 'porte_to_glace' and player_spawn == (200, 200):
                         player_spawn = pos
-                    
                     self.doors.append({'rect': rect, 'dest': dest, 'type': obj_type_lower})
                 elif obj_type == 'BossGlace':
                     if not self.boss_glace_dead:
@@ -668,9 +323,6 @@ class Game:
                             mob.spawn_pos = pos
         except ValueError:
             print("INFO : Calque 'Objets' introuvable — monstres non charges depuis Tiled.")
-
-
-
         self.last_transition_flag = ""
         if self.killed_by_boss and hasattr(self, 'zone_boss_respawn_point'):
             self.last_transition_flag = "boss"
@@ -710,7 +362,6 @@ class Game:
             self.last_transition_flag = "none"
             self.player.set_position(player_spawn)
             self.respawn_point = player_spawn
-            
         self.coming_from_boss = False
         self.coming_from_glace = False
         self.coming_from_lave = False
@@ -724,17 +375,12 @@ class Game:
         self.coming_from_lave = False
         self.coming_from_teleport = False
         self.coming_from_teleport_lave = False
-        
-        # Snap camera to player immediately to avoid panning from (0,0)
         target_x = self.player.rect.centerx - SCREEN_WIDTH // 2
         target_y = self.player.rect.centery - SCREEN_HEIGHT // 2
         self.camera.offset.x = max(0, min(target_x, self.camera.map_width - SCREEN_WIDTH))
         self.camera.offset.y = max(0, min(target_y, self.camera.map_height - SCREEN_HEIGHT))
-
-        # Auto-save after changing map/zone
         if getattr(self, 'game_started', False):
             self.save_game()
-
     def teleport_from_boss(self):
         self.coming_from_teleport = True
         self.map_flag = "tp_glace"
@@ -742,7 +388,6 @@ class Game:
             self.network._send({"action": "request_map_change", "dest": "assets/maps/map_glace.tmx", "req_flag": "tp_glace"})
             return
         self.load_map('assets/maps/map_glace.tmx')
-
     def teleport_from_boss_lave(self):
         self.coming_from_teleport_lave = True
         self.map_flag = "tp_lave"
@@ -750,7 +395,6 @@ class Game:
             self.network._send({"action": "request_map_change", "dest": "assets/maps/ZoneLave.tmx", "req_flag": "tp_lave"})
             return
         self.load_map('assets/maps/ZoneLave.tmx')
-
     def load_game(self, slot):
         is_same_slot = (getattr(self, 'current_save_slot', None) == slot)
         self.current_save_slot = slot
@@ -759,47 +403,33 @@ class Game:
             try:
                 with open(filename, 'r') as f:
                     data = json.load(f)
-                
                 self.current_save_name = data.get('save_name', None)
-
-                # Restore game state
                 self.score = data.get('score', 0)
                 self.kill_count = data.get('kill_count', 0)
-                
                 loaded_play_time = data.get('play_time', 0.0)
                 if is_same_slot and hasattr(self, 'play_time'):
                     self.play_time = max(self.play_time, loaded_play_time)
                 else:
                     self.play_time = loaded_play_time
-                    
                 self.boss_glace_dead = data.get('boss_glace_dead', False)
                 self.boss_lave_dead = data.get('boss_lave_dead', False)
-                
-                # Killed mobs - convert back to set of tuples
                 killed = data.get('killed_mobs', [])
                 self.killed_mobs = set()
                 for item in killed:
                     self.killed_mobs.add((item[0], tuple(item[1])))
-                
-                # Restore map
                 map_name = data.get('current_map_name', 'assets/maps/Surface.tmx')
-                # Set current_map_name before load_map to prevent killed_mobs from being cleared
                 self.current_map_name = map_name
                 self.load_map(map_name)
-                
-                # Restore player state
                 player_pos = data.get('player_pos', [200, 200])
                 self.player.set_position(tuple(player_pos))
                 self.respawn_point = tuple(player_pos)
                 self.player.hp_current = data.get('player_hp', 100)
-                
                 print(f"Partie chargee depuis {filename}")
             except Exception as e:
                 print(f"Erreur lors du chargement : {e}")
                 self.load_map('assets/maps/Surface.tmx')
         else:
             print(f"Aucune sauvegarde trouvee pour le slot {slot}, nouvelle partie.")
-            # Start fresh
             self.score = 0
             self.kill_count = 0
             self.play_time = 0.0
@@ -808,20 +438,14 @@ class Game:
             self.killed_mobs.clear()
             self.load_map('assets/maps/Surface.tmx')
             self.player.hp_current = 100
-            
         self.last_save_time = pygame.time.get_ticks()
         self.game_started = True
         self.is_paused = False
-
     def save_game(self):
         if not self.current_save_slot:
             return
-            
         filename = f"save_{self.current_save_slot}.json"
-        
-        # Serialize killed_mobs
         killed_list = [[m[0], list(m[1])] for m in self.killed_mobs]
-        
         data = {
             'save_name': getattr(self, 'current_save_name', None),
             'current_map_name': self.current_map_name,
@@ -834,15 +458,13 @@ class Game:
             'killed_mobs': killed_list,
             'play_time': self.play_time
         }
-        
         try:
             with open(filename, 'w') as f:
                 json.dump(data, f, indent=4)
             print(f"Partie sauvegardee dans {filename}")
-            self.save_indicator_timer = 180  # 3 seconds at 60 FPS
+            self.save_indicator_timer = 180  
         except Exception as e:
             print(f"Erreur lors de la sauvegarde : {e}")
-
     def delete_save(self, slot):
         filename = f"save_{slot}.json"
         if os.path.exists(filename):
@@ -853,9 +475,7 @@ class Game:
                 print(f"Erreur lors de la suppression : {e}")
         self.menu.refresh_saves()
         self.menu.state = "save_selection"
-
     def fade_in(self, duration_ms=600):
-        """Fondu depuis le noir vers le contenu actuel."""
         fade = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
         fade.fill((0, 0, 0))
         steps   = 40
@@ -867,36 +487,24 @@ class Game:
             self.screen.blit(fade, (0, 0))
             pygame.display.flip()
             pygame.time.delay(delay)
-
-    # ── Gestion réseau ────────────────────────────────────────────
-
     def _ensure_network(self):
-        """Crée et connecte le Network si ce n'est pas déjà fait."""
         if self.network is None:
             self.network = Network()
             self.network.connect()
-
     def _start_multi_as_host(self):
         self._ensure_network()
         self.network.create_session()
-
     def _start_multi_as_client(self, code: str):
         self._ensure_network()
         self.network.join_session(code)
-
     def _launch_multi_game(self):
-        """Démarre effectivement la partie multi (appelé quand les 2 joueurs sont prêts)."""
         self.is_multi      = True
         self.game_started  = True
         self.is_paused     = False
-        
-        # Configure les numéros de joueur en fonction du rôle
         if self.network and self.network.role == "client":
             self.player.player_num = 2
             self.player.load_assets()
             self.remote_player = RemotePlayer(self.player.rect.topleft, player_num=1)
-            
-            # Réinitialisation pour forcer la synchronisation avec le host
             self.current_map_name = ""
             self.killed_mobs.clear()
             self.boss_glace_dead = False
@@ -908,20 +516,15 @@ class Game:
             self.player.player_num = 1
             self.player.load_assets()
             self.remote_player = RemotePlayer(self.player.rect.topleft, player_num=2)
-
         self.visibles_sprites.add(self.remote_player)
-        
         if getattr(self, 'network', None) and self.network.role == "host":
             self.network._send({"action": "start_multi_game"})
-
     def _network_update(self, dt):
-        """Envoi/réception réseau — appelé chaque frame quand multi actif."""
         if self.network is None:
             return
-
         if self.network.role == "host":
             self.net_timer += dt
-            if self.net_timer >= 1 / 60:          # 60 fois/seconde (très fluide)
+            if self.net_timer >= 1 / 60:          
                 self.net_timer = 0
                 state = {
                     "map_name": getattr(self, "current_map_name", ""),
@@ -961,7 +564,6 @@ class Game:
                 state["events_for_client"] = getattr(self, 'events_for_client', [])
                 self.network.send_game_state(state)
                 self.events_for_client = []
-
             for msg in self.network.poll():
                 self.last_msg_time = pygame.time.get_ticks()
                 if msg.get("action") == "input":
@@ -987,8 +589,6 @@ class Game:
                     elif req_flag == "tp_glace": self.coming_from_teleport = True
                     elif req_flag == "tp_lave": self.coming_from_teleport_lave = True
                     self.load_map(msg.get("dest"))
-
-        # ── CLIENT : envoie son état (P2), reçoit l'état du host (P1) ──────
         elif self.network.role == "client":
             self.net_timer += dt
             if self.net_timer >= 1 / 60:
@@ -1003,7 +603,6 @@ class Game:
                 }
                 self.network.send_client_state(state)
                 self.pending_damage_events = []
-
             for msg in self.network.poll():
                 self.last_msg_time = pygame.time.get_ticks()
                 if msg.get("action") == "game_state":
@@ -1021,7 +620,6 @@ class Game:
                         elif remote_flag == "tp_lave": self.coming_from_teleport_lave = True
                         elif remote_flag == "mage": self.coming_from_mage = True
                         self.load_map(remote_map)
-
                     for ev in msg.get("events_for_client", []):
                         if ev["type"] in ("boss_proj", "boss_sw", "boss_hazard"):
                             self.player.take_damage(ev["damage"])
@@ -1031,20 +629,16 @@ class Game:
                             elif ev["effect"] == "lave":
                                 self.player.burn_timer = 180
                                 self.player.burn_dps = 3
-
-                    # Le joueur distant pour le client = p1 dans l'état host
                     if self.remote_player:
                         self.remote_player.rect.x     = msg.get("p1_x", self.remote_player.rect.x)
                         self.remote_player.rect.y     = msg.get("p1_y", self.remote_player.rect.y)
                         self.remote_player.hp_current = msg.get("p1_hp", self.remote_player.hp_current)
                         self.remote_player.status     = msg.get("p1_status", self.remote_player.status)
-
                     self.remote_projs = msg.get("projs", [])
                     self.remote_enemy_projs = msg.get("enemy_projs", [])
                     self.remote_boss_projs = msg.get("boss_projs", [])
                     self.remote_boss_shockwaves = msg.get("boss_shockwaves", [])
                     self.remote_boss_hazards = msg.get("boss_hazards", [])
-
                     mobs_state = msg.get("mobs", [])
                     received_ids = {m["id"] for m in mobs_state}
                     for m_state in mobs_state:
@@ -1058,7 +652,6 @@ class Game:
                                 mob.facing_right = True
                             elif dx < -0.2:
                                 mob.facing_right = False
-                            
                             mob.rect.x = m_state["x"]
                             mob.rect.y = m_state["y"]
                             if hasattr(mob, 'hp_current'):
@@ -1071,7 +664,6 @@ class Game:
                                 if mob.hp <= 0 and getattr(mob, 'alive', True):
                                     mob.alive = False
                                     if hasattr(mob, 'on_death'): mob.on_death()
-                                
                             if "astate" in m_state:
                                 mob.attack_state = m_state["astate"]
                             if "phase" in m_state:
@@ -1082,15 +674,13 @@ class Game:
                         if getattr(m, 'id', None) not in received_ids:
                             if hasattr(m, 'hp_current'): m.hp_current = 0
                             elif hasattr(m, 'hp'): m.hp = 0
-                            
                             if not getattr(m, 'client_death_processed', False):
                                 m.client_death_processed = True
                                 if hasattr(m, 'dead'): m.dead = True
                                 if hasattr(m, 'alive'): m.alive = False
                                 if hasattr(m, 'on_death'): m.on_death()
-                                
                                 if 'Esprit' in type(m).__name__:
-                                    from monstre import ExplosionVFX
+                                    from monsters import ExplosionVFX
                                     ExplosionVFX(
                                         m.rect.center,
                                         getattr(m, 'COULEUR_CORPS', (255, 0, 0)),
@@ -1103,9 +693,6 @@ class Game:
                                             m._apply_explosion(self.player)
                 elif msg.get("action") == "respawn_team":
                     self._respawn()
-
-    # ── Spawn mobs ────────────────────────────────────────────────
-
     def _spawn_mob(self, obj_type, pos):
         groups    = [self.monster_sprites]
         mob_class = MOB_CLASSES[obj_type]
@@ -1121,54 +708,36 @@ class Game:
         mob.id = self.mob_counter
         self.mob_counter += 1
         return mob
-
-    # ── Respawn / Game Over ───────────────────────────────────────
-
     def _respawn(self):
-        """Réinitialise le joueur au dernier point de respawn."""
         self.death_time = None
         self.player.hp_current = self.player.hp_max
         self.player.vel_y = 0
         self.killed_mobs.clear()
-        
         if self.killed_by_boss and getattr(self, 'zone_boss_map', None):
             self.load_map(self.zone_boss_map)
             self.player.set_position(self.zone_boss_respawn_point)
             self.respawn_point = self.zone_boss_respawn_point
         elif self.current_map_name:
             self.load_map(self.current_map_name)
-
     def _go_to_main_menu(self):
-        """Retourne au menu principal sans réinitialiser la partie."""
-        self._respawn()          # remet le joueur en vie pour éviter un état incohérent
+        self._respawn()          
         self.is_paused    = True
         self.game_started = False
         self.menu.state   = "main"
-        self.menu_input_blocked = 10   # ignore les clics pendant 10 frames
-        
-        # Reset local player to player 1 assets
+        self.menu_input_blocked = 10   
         if self.player:
             self.player.player_num = 1
             self.player.load_assets()
-
-    # ── Update ────────────────────────────────────────────────────
-
     def update(self, dt):
         if self.menu_input_blocked > 0:
             self.menu_input_blocked -= 1
-
         if self.save_indicator_timer > 0:
             self.save_indicator_timer -= 1
-
         if self.is_multi and self.network:
-            # Initialise le timer de message si pas encore fait
             if getattr(self, 'last_msg_time', 0) == 0:
                 self.last_msg_time = pygame.time.get_ticks()
-            
-            # Déconnexion par timeout (15 secondes sans message, compense les temps de chargement)
             if pygame.time.get_ticks() - self.last_msg_time > 15000:
                 self.network.connected = False
-
             if not self.network.connected:
                 print("Déconnexion détectée, retour au menu...")
                 self.is_multi = False
@@ -1177,57 +746,36 @@ class Game:
                 self.menu.state = "main"
                 self.network = None
                 self.last_msg_time = 0
-                
-                # Reset local player to player 1 assets
                 if self.player:
                     self.player.player_num = 1
                     self.player.load_assets()
                 return
-
-            # Réseau - doit toujours tourner pour éviter le timeout
             self._network_update(dt)
-
         if not self.is_paused:
             if getattr(self, 'game_started', False) and not self.boss_glace_dead and self.player.hp_current > 0:
                 self.play_time += dt * 1000.0
-
             if self.game_started and self.current_save_slot:
                 if pygame.time.get_ticks() - self.last_save_time >= 120000:
                     self.save_game()
                     self.last_save_time = pygame.time.get_ticks()
-            # En mode client on laisse quand même le joueur se mettre à jour
-            # visuellement (la position sera écrasée par l'état réseau).
-            # On le met toujours à jour pour qu'il puisse jouer son animation de mort s'il meurt.
             self.player.update(self.obstacle_sprites, self.ladder_sprites, dt)
-                
             if self.is_multi and getattr(self, 'remote_player', None):
                 self.remote_player.update(dt)
-                
-            # Check transition to Zone1 (Single-player or Host loads directly, Client requests)
             if pygame.sprite.spritecollideany(self.player, self.transition_sprites):
                 if self.is_multi and self.network and self.network.role == "client":
                     self.network._send({"action": "request_map_change", "dest": 'assets/maps/Zone1.tmx'})
                 else:
                     self.load_map('assets/maps/Zone1.tmx')
-
-            # NPC
             for npc in self.npc_sprites:
                 npc.update(self.player.rect, self.dialogue_box)
-
-            # Portes (Hint)
             for door in self.doors:
-                # On agrandit virtuellement la hitbox de la porte pour le hint (pour qu'il apparaisse un peu avant)
                 if self.player.hitbox.colliderect(door['rect'].inflate(64, 64)):
                     self.dialogue_box.show("Appuyez sur [E] pour entrer")
                     break
             else:
                 if self.dialogue_box.text == "Appuyez sur [E] pour entrer":
                     self.dialogue_box.hide()
-
-            # Camera
             self.camera.update(self.player.rect)
-
-            # Monstres
             for m in list(self.monster_sprites):
                 if not self.is_multi or self.network.role == "host":
                     target_player = self.player
@@ -1236,7 +784,6 @@ class Game:
                         dist_remote = pygame.math.Vector2(m.rect.center).distance_to(self.remote_player.rect.center)
                         if dist_remote < dist_local:
                             target_player = self.remote_player
-
                     if hasattr(m, 'attack_state'):
                         m.update(target_player.rect, dt)
                     else:
@@ -1244,7 +791,6 @@ class Game:
                 else:
                     if getattr(m, 'contact_timer', 0) > 0:
                         m.contact_timer -= 1
-                    
                     if getattr(m, 'dead', False) or not getattr(m, 'alive', True):
                         if hasattr(m, 'attack_state'):
                             m.update(self.player.rect, dt)
@@ -1252,10 +798,8 @@ class Game:
                             m.update(self.player, self.obstacle_sprites)
                     elif hasattr(m, '_update_visual'):
                         m._update_visual(dt * 1000)
-
                 if hasattr(m, 'heal_allies'):
                     m.heal_allies(self.monster_sprites)
-
                 is_m_dead = getattr(m, 'dead', False) or not getattr(m, 'alive', True)
                 if not is_m_dead and m.rect.colliderect(self.player.hitbox) and self.player.hp_current > 0:
                     if getattr(m, 'contact_timer', 0) <= 0:
@@ -1263,10 +807,8 @@ class Game:
                         m.contact_timer = getattr(m, 'CONTACT_COOLDOWN', 60)
                         if self.player.hp_current <= 0:
                             self.killed_by_boss = ('Boss' in type(m).__name__ or hasattr(m, 'attack_state'))
-
                 if not is_m_dead and hasattr(m, 'attack_state'):
                     if not hasattr(self, 'events_for_client'): self.events_for_client = []
-                    # Collision pour les projectiles et ondes de choc internes du boss
                     for p in list(m.projectiles):
                         if p.rect.colliderect(self.player.hitbox) and self.player.hp_current > 0:
                             self.player.take_damage(15)
@@ -1280,7 +822,6 @@ class Game:
                             p.kill()
                             effect = "glace" if 'Glacius' in type(m).__name__ else "lave"
                             self.events_for_client.append({"type": "boss_proj", "damage": 15, "effect": effect})
-
                     for sw in m.shockwaves:
                         if sw.rect.colliderect(self.player.hitbox) and self.player.hp_current > 0:
                             if getattr(sw, 'hit_player', False) == False:
@@ -1296,7 +837,6 @@ class Game:
                                 effect = "glace" if 'Glacius' in type(m).__name__ else "lave"
                                 self.events_for_client.append({"type": "boss_sw", "damage": 20, "effect": effect})
                                 sw.hit_remote = True
-
                     for h in m.hazards:
                         if h.rect.colliderect(self.player.hitbox) and self.player.hp_current > 0:
                             self.player.take_damage(getattr(h, 'damage', 1))
@@ -1305,7 +845,6 @@ class Game:
                         elif self.is_multi and getattr(self, 'remote_player', None) and h.rect.colliderect(self.remote_player.rect) and self.remote_player.hp_current > 0:
                             effect = "glace" if 'Glacius' in type(m).__name__ else "lave"
                             self.events_for_client.append({"type": "boss_hazard", "damage": getattr(h, 'damage', 1), "effect": effect})
-
                 is_m_dead_finished = (getattr(m, 'dead', False) and getattr(m, 'death_finished', True)) or (hasattr(m, 'alive') and not m.alive and getattr(m, 'death_finished', True))
                 if is_m_dead_finished:
                     mob_type = type(m).__name__
@@ -1315,12 +854,9 @@ class Game:
                     for _ in range(16):
                         self.particles.append(
                             Particle(m.rect.centerx, m.rect.centery, color))
-                    
                     if hasattr(m, 'attack_state') and mob_type == 'Glacius':
                         self.boss_glace_dead = True
                         self.boss_death_pos = (m.rect.centerx, m.rect.bottom - 64)
-                        
-                        # Handle best time
                         filepath = os.path.join(ROOT_DIR, "best_time.json")
                         old_best = None
                         if os.path.exists(filepath):
@@ -1336,7 +872,6 @@ class Game:
                                 self.menu.load_best_time()
                             except:
                                 pass
-                        
                         msg = "Bravo, tu as vaincu le boss !|Je te téléporte à la porte suivante."
                         npc = NPC(self.boss_death_pos, msg, [self.visibles_sprites, self.npc_sprites], on_end_callback=self.teleport_from_boss)
                     elif hasattr(m, 'attack_state') and mob_type == 'Pyros':
@@ -1347,10 +882,7 @@ class Game:
                     else:
                         if hasattr(m, 'spawn_pos'):
                             self.killed_mobs.add((self.current_map_name, m.spawn_pos))
-                            
                     m.kill()
-
-            # Projectiles joueur → monstres
             for proj in list(self.player.capacite.projectiles):
                 for m in list(self.monster_sprites):
                     is_dead = getattr(m, 'dead', False) or not getattr(m, 'alive', True)
@@ -1362,11 +894,7 @@ class Game:
                             if self.network:
                                 self.pending_damage_events.append({"mob_id": getattr(m, 'id', -1), "amount": 20})
                         break
-
-            # Mise à jour des projectiles ennemis
             self.enemy_proj_sprites.update(self.obstacle_sprites)
-
-            # Projectiles ennemis → joueur
             for ep in list(self.enemy_proj_sprites):
                 if ep.rect.colliderect(self.player.hitbox) and self.player.hp_current > 0:
                     self.player.take_damage(getattr(ep, 'damage', 10))
@@ -1375,7 +903,6 @@ class Game:
                         self.killed_by_boss = True
                     else:
                         self.killed_by_boss = False
-            
             if self.is_multi and self.network.role == "client":
                 for proj in getattr(self, "remote_enemy_projs", []):
                     r = pygame.Rect(proj["x"], proj["y"], 16, 16)
@@ -1397,15 +924,10 @@ class Game:
                     if self.player.hitbox.colliderect(r) and self.player.hp_current > 0:
                         self.player.take_damage(1)
                         self.killed_by_boss = True
-
-            # VFX + particules
             self.vfx_sprites.update()
             for p in self.particles:
                 p.update()
             self.particles = [p for p in self.particles if p.life > 0]
-
-    # ── Draw ──────────────────────────────────────────────────────
-
     def draw_health_bar(self):
         x, y  = 50, 50
         ratio = max(0, self.player.hp_current / self.player.hp_max)
@@ -1413,7 +935,6 @@ class Game:
         pygame.draw.rect(self.screen, RED,   (x, y, bar_w, 20))
         pygame.draw.rect(self.screen, GREEN, (x, y, int(bar_w * ratio), 20))
         pygame.draw.rect(self.screen, BLACK, (x, y, bar_w, 20), 3)
-
     def draw_status_indicators(self):
         y = 80
         p = self.player
@@ -1431,9 +952,7 @@ class Game:
             s = p.burn_timer // 60 + 1
             self.screen.blit(
                 self.font_hud.render(f"BRULURE {s}s", True, (255, 120, 0)), (50, y))
-
     def draw_remote_health_bar(self):
-        """Barre de vie du joueur distant (haut droite)."""
         if self.remote_player is None:
             return
         x = SCREEN_WIDTH - 250
@@ -1445,7 +964,6 @@ class Game:
         pygame.draw.rect(self.screen, BLACK,           (x, y, bar_w, 20), 3)
         lbl = self.font_small.render("P2", True, (0, 200, 255))
         self.screen.blit(lbl, (x - 30, y))
-
     def draw(self, flip=True):
         if self.is_paused:
             self.menu.draw(self.game_started, self.network)
@@ -1454,21 +972,16 @@ class Game:
             if self.shake_ref[0] > 0:
                 self.shake_ref[0] -= 1
                 shake = random.randint(-6, 6)
-
             self.screen.blit(
                 self.background_image,
                 (-int(self.camera.offset.x) + shake,
                  -int(self.camera.offset.y) + shake))
-
             for sprite in self.visibles_sprites:
                 self.screen.blit(sprite.image, self.camera.apply(sprite.rect))
-
             for projectile in self.player.capacite.projectiles:
                 self.screen.blit(projectile.image, self.camera.apply(projectile.rect))
-
             for ep in self.enemy_proj_sprites:
                 self.screen.blit(ep.image, self.camera.apply(ep.rect))
-
             for m in self.monster_sprites:
                 if hasattr(m, 'attack_state'):
                     m.draw(self.screen, -int(self.camera.offset.x), -int(self.camera.offset.y))
@@ -1483,13 +996,10 @@ class Game:
                     pygame.draw.rect(self.screen, (139, 0, 0), (bx, by, bw, bh))
                     pygame.draw.rect(self.screen, (0, 220, 0), (bx, by, int(bw * ratio), bh))
                     pygame.draw.rect(self.screen, BLACK,        (bx, by, bw, bh), 1)
-
             for vfx in self.vfx_sprites:
                 self.screen.blit(vfx.image, self.camera.apply(vfx.rect))
-
             for p in self.particles:
                 p.draw(self.screen)
-
             if self.is_multi:
                 for proj in getattr(self, "remote_projs", []):
                     r = pygame.Rect(proj["x"], proj["y"], 16, 16)
@@ -1511,43 +1021,32 @@ class Game:
                     r = pygame.Rect(hz["x"], hz["y"], hz.get("w", 32), hz.get("h", 32))
                     r = self.camera.apply(r)
                     pygame.draw.rect(self.screen, (255, 100, 0), r, 2)
-
             self.dialogue_box.draw()
             self.draw_health_bar()
             self.draw_status_indicators()
-
             if self.is_multi:
                 self.draw_remote_health_bar()
-
             score_txt = self.font_hud.render(
                 f"Score : {self.score}   Kills : {self.kill_count}", True, WHITE)
             self.screen.blit(score_txt, (SCREEN_WIDTH - score_txt.get_width() - 20, 20))
-
             if getattr(self, 'game_started', False):
                 timer_txt = self.font_hud.render(format_time(self.play_time), True, YELLOW)
                 self.screen.blit(timer_txt, (SCREEN_WIDTH // 2 - timer_txt.get_width() // 2, 20))
-
             if self.player.hp_current <= 0:
                 if self.death_time is None:
                     self.death_time = pygame.time.get_ticks()
-                
                 time_since_death = pygame.time.get_ticks() - self.death_time
                 if time_since_death >= 1000:
                     progress = min(1.0, (time_since_death - 1000) / 1000.0)
-                    
                     overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
                     overlay.fill((0, 0, 0, int(180 * progress)))
                     self.screen.blit(overlay, (0, 0))
-
                     txt = self.font_title.render("GAME OVER", True, RED)
                     txt.set_alpha(int(255 * progress))
                     self.screen.blit(txt, (SCREEN_WIDTH // 2 - txt.get_width() // 2,
                                            SCREEN_HEIGHT // 2 - 80))
-
                     mouse_pos = pygame.mouse.get_pos()
                     btn_font  = pygame.font.SysFont("consolas", 28, bold=True)
-
-                    # Bouton RÉAPPARAITRE
                     btn_surf_r = pygame.Surface((self.btn_respawn.width, self.btn_respawn.height), pygame.SRCALPHA)
                     color_r = (0, 160, 60, int(255 * progress)) if self.btn_respawn.collidepoint(mouse_pos) else (0, 110, 40, int(255 * progress))
                     pygame.draw.rect(btn_surf_r, color_r, btn_surf_r.get_rect(), border_radius=14)
@@ -1556,8 +1055,6 @@ class Game:
                     lbl_r.set_alpha(int(255 * progress))
                     btn_surf_r.blit(lbl_r, lbl_r.get_rect(center=btn_surf_r.get_rect().center))
                     self.screen.blit(btn_surf_r, self.btn_respawn.topleft)
-
-                    # Bouton MENU
                     btn_surf_m = pygame.Surface((self.btn_gameover_menu.width, self.btn_gameover_menu.height), pygame.SRCALPHA)
                     color_m = (0, 120, 210, int(255 * progress)) if self.btn_gameover_menu.collidepoint(mouse_pos) else (0, 80, 160, int(255 * progress))
                     pygame.draw.rect(btn_surf_m, color_m, btn_surf_m.get_rect(), border_radius=14)
@@ -1566,11 +1063,9 @@ class Game:
                     lbl_m.set_alpha(int(255 * progress))
                     btn_surf_m.blit(lbl_m, lbl_m.get_rect(center=btn_surf_m.get_rect().center))
                     self.screen.blit(btn_surf_m, self.btn_gameover_menu.topleft)
-
             if self.save_indicator_timer > 0:
                 text = self.save_font.render("Sauvegarde automatique...", True, WHITE)
                 self.screen.blit(text, (SCREEN_WIDTH - text.get_width() - 50, 50))
-                
                 t = pygame.time.get_ticks() / 200.0
                 cx_wheel = SCREEN_WIDTH - 25
                 cy_wheel = 60
@@ -1579,22 +1074,16 @@ class Game:
                 start_angle = t
                 end_angle = t + math.pi
                 pygame.draw.arc(self.screen, WHITE, rect, start_angle, end_angle, 3)
-
             if self.is_multi and getattr(self, 'show_menu_overlay', False):
                 overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
                 overlay.fill((0, 0, 0, 160))
                 self.screen.blit(overlay, (0, 0))
                 self.menu.draw(self.game_started, self.network)
-
         if flip:
             pygame.display.flip()
-
-    # ── Boucle principale ─────────────────────────────────────────
-
     def run(self):
         while True:
             dt = self.clock.tick(FPS) / 1000.0
-
             for event in pygame.event.get():
                 if event.type == getattr(self.sound_manager, '_loop_event', -1):
                     try:
@@ -1603,11 +1092,9 @@ class Game:
                         pygame.mixer.music.play(-1)
                     except pygame.error:
                         pass
-
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
-
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     if self.game_started:
                         if self.is_multi:
@@ -1617,19 +1104,14 @@ class Game:
                         else:
                             self.is_paused = not self.is_paused
                             self.menu.state = "main"
-
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_e:
                     if not self.is_paused and self.player.hp_current > 0:
                         map_before = getattr(self, 'current_map_name', None)
-                        # Interaction PNJ
                         for npc in self.npc_sprites:
                             if hasattr(npc, 'interact'):
                                 npc.interact()
-                        
                         if getattr(self, 'current_map_name', None) != map_before:
                             continue
-                        
-                        # Interaction Portes
                         for door in self.doors:
                             if self.player.hitbox.colliderect(door['rect'].inflate(64, 64)):
                                 if door['type'] == 'porteglace' and not self.boss_glace_dead:
@@ -1638,7 +1120,6 @@ class Game:
                                 elif door['type'] == 'porte_to_glace' and not self.boss_lave_dead:
                                     self.dialogue_box.show("La porte vers la zone de glace est verrouillée...\nIl faut vaincre le boss de lave.", owner=None)
                                     break
-                                
                                 if 'boss' in self.current_map_name:
                                     self.coming_from_boss = True
                                     self.map_flag = "boss"
@@ -1648,7 +1129,6 @@ class Game:
                                 elif 'lave' in self.current_map_name.lower():
                                     self.coming_from_lave = True
                                     self.map_flag = "lave"
-                                
                                 if self.is_multi and self.network and self.network.role == "client":
                                     req_flag = "none"
                                     if getattr(self, 'coming_from_boss', False): req_flag = "boss"
@@ -1658,8 +1138,6 @@ class Game:
                                 else:
                                     self.load_map(door['dest'])
                                 break
-
-                # ── Boutons Game Over ───────────────────────────────
                 if (not self.is_paused
                         and self.player.hp_current <= 0
                         and self.death_time is not None
@@ -1672,18 +1150,13 @@ class Game:
                             self.network._send({"action": "respawn_team"})
                     elif self.btn_gameover_menu.collidepoint(event.pos):
                         self._go_to_main_menu()
-
                 if (self.is_paused or (self.is_multi and getattr(self, 'show_menu_overlay', False))) and self.menu_input_blocked == 0:
                     action = self.menu.handle_input(event, self.network)
-
-                    # Slider volume — action est un tuple ("volume_changed", valeur)
                     if isinstance(action, tuple) and action[0] == "volume_changed":
                         self.sound_manager.set_volume(action[1])
-
                     elif isinstance(action, tuple) and action[0] == "keybinds_changed":
                         if self.player:
                             self.player.keybinds = action[1]
-
                     elif action == "open_modes":
                         if self.game_started:
                             if self.is_multi:
@@ -1693,18 +1166,15 @@ class Game:
                                 self.is_paused = False
                         else:
                             self.menu.state = "mode_selection"
-
                     elif action == "respawn":
                         if self.game_started and self.current_save_slot:
                             print(f"Rechargement de la dernière sauvegarde (Slot {self.current_save_slot}) !")
                             self.load_game(self.current_save_slot)
                             self.is_paused = False
-
                     elif isinstance(action, tuple) and action[0] == "play_story":
                         slot = action[1]
                         print(f"Mode Histoire lancé (Slot {slot}) !")
                         self.load_game(slot)
-                        
                     elif isinstance(action, tuple) and action[0] == "new_game":
                         slot = action[1]
                         save_name = action[2] if len(action) > 2 else None
@@ -1713,31 +1183,23 @@ class Game:
                         if save_name:
                             self.current_save_name = save_name
                         self.save_game()
-                        
                     elif isinstance(action, tuple) and action[0] == "delete_save":
                         slot = action[1]
                         self.delete_save(slot)
-
-                    # ── HOST crée une session ───────────────────────
                     elif action == "multi_create_session":
                         print("Création de session multi...")
                         self._start_multi_as_host()
-
-                    # ── CLIENT rejoint une session ──────────────────
                     elif action == "multi_join_session":
                         code = self.menu.input_code
                         print(f"Tentative de rejoindre le salon : {code}")
                         self._start_multi_as_client(code)
-
                     elif action == "launch_multi_coop":
                         self._launch_multi_game()
-                        
                     elif action == "disconnect_multi":
                         if getattr(self, 'network', None):
                             self.network.close()
                             self.network = None
                         self.menu.state = "multi_lobby"
-
                     elif action == "quit":
                         if self.game_started:
                             if self.is_multi and self.network:
@@ -1755,49 +1217,34 @@ class Game:
                         else:
                             pygame.quit()
                             sys.exit()
-
-            # ── Vérification état réseau (en dehors des events) ─────
             if self.network is not None and self.is_paused:
-                # HOST : la partie démarre quand le pair a rejoint
                 if (self.network.role == "host"
                         and self.menu.state == "multi_host_wait"
                         and self.network.peer_joined):
                     print("Pair connecté ! Choix du mode multi.")
                     self.menu.state = "multi_mode_final"
-
-                # CLIENT : la partie démarre dès que le serveur confirme "joined"
                 elif (self.network.role == "client"
                         and self.menu.state == "multi_join_wait"
                         and self.network.peer_joined):
                     print("Code valide ! En attente de l'hôte.")
                     self.menu.state = "multi_client_wait_start"
-                    
-                # CLIENT en attente du démarrage par l'hôte
                 elif (self.network.role == "client"
                         and self.menu.state == "multi_client_wait_start"):
                     for msg in self.network.poll():
-                        # L'hôte envoie continuellement l'état du jeu (game_state) une fois la partie lancée
                         if msg.get("action") == "game_state" or msg.get("action") == "start_multi_game":
                             print("L'hôte a lancé la partie !")
                             self._launch_multi_game()
-                            # On remet le message pour qu'il soit traité par le update normal
                             self.network.incoming.insert(0, msg)
                             break
-
             self.update(dt)
             self.draw()
-
-#LANCEMENT DU JEU##########################################################################
-
 if __name__ == '__main__':
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE | pygame.SCALED)
     pygame.display.set_caption("SMILE")
     clock  = pygame.time.Clock()
-
     intro_path = os.path.join(ROOT_DIR, "assets/video/videointro.mp4")
     IntroVideo(screen, clock, intro_path).play()
-
     game = Game(screen, clock)
     game.sound_manager.start_music()
     game.fade_in()

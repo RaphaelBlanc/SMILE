@@ -1,8 +1,7 @@
 import os
-
-# ROOT_DIR pointe vers la racine du projet (le parent de src/)
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
+SCREEN_WIDTH  = 1920
+SCREEN_HEIGHT = 1072
 def format_time(ms):
     if ms is None:
         return "--:--.---"
