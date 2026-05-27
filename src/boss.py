@@ -550,7 +550,7 @@ class BossBase(pygame.sprite.Sprite):
 
 class Pyros(BossBase):
     NAME     = "PYROS"
-    HP_MAX   = 800
+    HP_MAX   = 2500
     WIDTH    = 576
     HEIGHT   = 320
     THEME_PROJ   = (255, 100, 20)
@@ -575,7 +575,7 @@ class Pyros(BossBase):
         "slam_shake": 16,
         "fire_count": 3, "fire_ivl":600, "fire_spd":6, "fire_r":28,
         "fw_cols":8,  "fw_ivl":200, "fw_vmin":9,"fw_vmax":14,"fw_r":20,
-        "grab_spd":   {1:4.0,2:5.0,3:6.5}, "grab_rng":90, "grab_fist_r":32,
+        "grab_spd":   {1:8.0,2:10.0,3:13.0}, "grab_rng":90, "grab_fist_r":32,
         "meteor_n":16,"meteor_ivl":170,"meteor_vmin":11,"meteor_vmax":17,"meteor_r":22,
         "rush_spd":24,"rush_dur":1600,
     }
@@ -750,7 +750,7 @@ class Pyros(BossBase):
         elif n=="charge_melee": self._ex_charge_melee(dt_ms)
 
     def _ex_charge_melee(self, dt_ms):
-        self.vx = self._charge_dir * 14
+        self.vx = self._charge_dir * 22
         self.exec_timer -= dt_ms
         
         if getattr(self, '_hit_wall', False) and self.on_ground:
