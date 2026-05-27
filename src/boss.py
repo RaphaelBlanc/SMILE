@@ -124,13 +124,13 @@ class ShockWave(pygame.sprite.Sprite):
     """Onde de choc au sol (Pyros / Granit / Mutant)."""
 
     def __init__(self, center_x, floor_y, spread_speed=14,
-                 wave_height=70, color=ORANGE):
+                 wave_height=70, color=ORANGE, max_spread=None):
         super().__init__()
         self.cx    = center_x
         self.floor_y     = floor_y
         self.spread      = 20
         self.spread_speed= spread_speed
-        self.max_spread  = SCREEN_WIDTH // 2 + 80
+        self.max_spread  = max_spread if max_spread is not None else SCREEN_WIDTH // 2 + 80
         self.height      = wave_height
         self.alpha       = 255
         self.color       = color
@@ -771,7 +771,7 @@ class Pyros(BossBase):
         if self.on_ground and self.vy==0 and not self._slam_landed:
             self._slam_landed=True; self.exec_timer=500
             sw=ShockWave(self.rect.centerx,self.floor_y,
-                         T["slam_sw_spd"][self.phase],T["slam_sw_h"][self.phase])
+                         T["slam_sw_spd"][self.phase],T["slam_sw_h"][self.phase], max_spread=450)
             self.shockwaves.add(sw)
             self._screen_shake_flag=True; self._emit_dust(20)
             if self._slam_warning: self._slam_warning.done=True
