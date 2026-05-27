@@ -143,10 +143,10 @@ class Menu:
             pygame.draw.circle(self.trophy_image, YELLOW, (32, 32), 32)
             
         self.keybinds = {
-            "move_left":  pygame.K_q,
-            "move_right": pygame.K_d,
             "move_up":    pygame.K_z,
             "move_down":  pygame.K_s,
+            "move_left":  pygame.K_q,
+            "move_right": pygame.K_d,
             "jump":       pygame.K_SPACE,
             "sprint":     pygame.K_LSHIFT,
             "attack":     pygame.K_f,
